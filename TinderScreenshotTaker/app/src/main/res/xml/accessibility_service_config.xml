@@ -1,0 +1,13 @@
+<!--accessibilityFlags?=flagReportViewIds -->
+<accessibility-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeAllMask"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault"
+    android:notificationTimeout="1000"
+    android:settingsActivity="com.example.tinderscreenshottaker.service.SwipeService"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:canRequestEnhancedWebAccessibility="true"
+    android:canRequestFilterKeyEvents="true"
+    android:description="@string/accessibility_service_description" />

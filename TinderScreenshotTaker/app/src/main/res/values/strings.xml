@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Tinder Screenshot Taker</string>
+    <string name="DefaultIpDevInput">10.0.2.2</string>
+    <string name="DefaultPort">2313</string>
+    <string name="DefaultAutoSwipeEnabled">true</string>
+    <string name="accessibility_service_description">Swipe accessibility service</string>
+</resources>
