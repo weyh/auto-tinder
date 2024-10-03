@@ -17,6 +17,12 @@ def mprint(text):
     print(">> ", end='')
     print(text)
 
+def get_optimizer():
+    if "2.10" in tf.__version__:
+        return keras.optimizers.Adam(learning_rate=0.001)
+
+    return tf.keras.optimizers.AdamW(learning_rate=0.0005)
+
 
 def main(args: argparse.Namespace):
     mprint(f"Num GPUs Available: {len(tf.config.list_physical_devices('GPU'))}")
@@ -91,34 +97,30 @@ def main(args: argparse.Namespace):
     early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=0.0001)
 
-    model.compile(optimizer=keras.optimizers.Adam(learning_rate=0.001),
+    model.compile(optimizer=get_optimizer(),
                   loss=keras.losses.SparseCategoricalCrossentropy(from_logits=True),
                   metrics=['accuracy'])
 
     model.summary()
 
     mprint("Fit")
-    epochs = 50
     history = model.fit(
         train_ds,
         validation_data=val_ds,
-        epochs=epochs,
+        epochs=1,
         callbacks=[early_stopping, reduce_lr]
     )
 
     if args.show:
-        visualize(history)
+        visualize(history, args.out_file)
     if args.ref_file is not None:
         predict(model, class_names, img_height, img_width, args.ref_file)
 
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
-    tflite_model = converter.convert()
-
-    with open(args.out_file, 'wb') as f:
-        f.write(tflite_model)
+    mprint(f"Saving model: {args.out_file}")
+    model.save(args.out_file)
 
 
-def visualize(history):
+def visualize(history, model_save_file: str):
     mprint("Visualize")
 
     acc = history.history['accuracy']
@@ -141,7 +143,12 @@ def visualize(history):
     plt.plot(epochs_range, val_loss, label='Validation Loss')
     plt.legend(loc='upper right')
     plt.title('Training and Validation Loss')
-    plt.show()
+
+    ext_start_idx = model_save_file.rfind('.')
+    if ext_start_idx != -1:
+        plt.savefig(f"{model_save_file[:ext_start_idx]}.png")
+
+    plt.show(block=True)
 
 
 def predict(model, class_names, img_height: int, img_width: int, ref_path: str):

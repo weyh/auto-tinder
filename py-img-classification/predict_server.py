@@ -3,18 +3,19 @@ import os
 import random
 import tempfile
 import time
-from typing import List
+from typing import List, Union
 import re
 import socket
 from functools import lru_cache
 
+import keras
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 import base64
 import tensorflow as tf
 import numpy as np
-from tensorflow.lite.python.interpreter import Interpreter
+from tensorflow.lite.python.interpreter import Interpreter as tflInterpreter
 
 KEY = "4-KEY_for_this+s3rveR"
 CHECK_DATA_BASE = "<0_w_0>"
@@ -72,8 +73,17 @@ def get_files(in_dir: str, file_filter: List[str]) -> List[str]:
 
     return files
 
+def predict_keras(model, ref_path: str)-> (str, float):
+    img = tf.keras.utils.load_img(ref_path, target_size=(IMG_HEIGHT, IMG_WIDTH))
+    img_array = tf.keras.utils.img_to_array(img)
+    img_array = tf.expand_dims(img_array, 0)  # Create a batch
 
-def predict(interpreter: Interpreter, ref_path: str) -> (str, float):
+    predictions = model.predict(img_array)
+    score = tf.nn.softmax(predictions[0])
+
+    return CLASS_NAMES[np.argmax(score)], 100 * np.max(score)
+
+def predict_tf_lite(interpreter: tflInterpreter, ref_path: str) -> (str, float):
     # Get input and output tensors
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
@@ -97,20 +107,25 @@ def predict(interpreter: Interpreter, ref_path: str) -> (str, float):
     return CLASS_NAMES[np.argmax(score)], 100 * np.max(score)
 
 
-def load_model(model_dir: str) -> Interpreter:
-    models = get_files(model_dir, [".tflite"])
+def load_model(model_dir: str) -> (str, Union[tflInterpreter, keras.Model]):
+    models = get_files(model_dir, [".tflite", ".keras"])
 
     def extract_number(s):
         match = re.search(r'\d+', s)
         return int(match.group()) if match else None
 
+    print("models: ", models)
+
     selected_model = max(models, key=extract_number)
 
     print("Selected model: " + selected_model)
 
-    interpreter = Interpreter(model_path=selected_model)
-    interpreter.allocate_tensors()
-    return interpreter
+    if ".tflite" in selected_model:
+        interpreter = tflInterpreter(model_path=selected_model)
+        interpreter.allocate_tensors()
+        return "tflite", interpreter
+
+    return "keras", tf.keras.models.load_model(selected_model)
 
 
 def start_server(ip: str, port: int, model_dir: str):
@@ -125,7 +140,14 @@ def start_server(ip: str, port: int, model_dir: str):
     """
     temp_img_file = os.path.join(tempfile.gettempdir(), TEMP_FILE)
 
-    interpreter = load_model(model_dir)
+    model_type, model = load_model(model_dir)
+    if "tflite" == model_type:
+        print("Using tflite file")
+        predict_fn = predict_tf_lite
+    else:
+        print("Using keras file")
+        predict_fn = predict_keras
+
     tf.function(jit_compile=True)
     print("JIT ON")
 
@@ -170,7 +192,7 @@ def start_server(ip: str, port: int, model_dir: str):
                     f.write(img_bytes)
                     written_size += len(img_bytes)
 
-            class_name, score = predict(interpreter, temp_img_file)
+            class_name, score = predict_fn(model, temp_img_file)
             print(f"Rating: {class_name} {score}")
 
             conn.sendall(class_name.encode("utf-8"))
