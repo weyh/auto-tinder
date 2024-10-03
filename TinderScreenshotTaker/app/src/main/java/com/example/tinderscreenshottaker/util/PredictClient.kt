@@ -47,7 +47,7 @@ class PredictClient(private val ip: String, private val port: Int) {
             var data = resp.toString(Charsets.UTF_8)
 
             if (data == "n") {
-                throw Exception("Failed to authenticate")
+                throw IllegalAccessException("Failed to authenticate")
             }
 
             val imgDataLen = imgData.size.toLittleEndian().toByteArray()

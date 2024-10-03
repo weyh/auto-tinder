@@ -258,13 +258,18 @@ public class MainActivity extends AppCompatActivity {
 
         if (target == ScreenshotImgType.AI) {
             backendHandler.post(() -> {
-                final Pair<String, Float> ret;
+                Pair<String, Float> ret;
                 try {
                     ret = predictClient.predict(bitmapData);
-                } catch (Exception e) {
-                    Log.e(TAG, "Failed to predict", e);
-                    Toast.makeText(this, "Prediction failed (connerr)", Toast.LENGTH_SHORT).show();
-                    return;
+                } catch (IllegalAccessError e) {
+                    Log.w(TAG, "Failed to predict retry");
+                    try {
+                        ret = predictClient.predict(bitmapData);
+                    } catch (IllegalAccessError e2) {
+                        Log.e(TAG, "Failed to predict", e);
+                        Toast.makeText(this, "Prediction failed (connerr)", Toast.LENGTH_LONG).show();
+                        return;
+                    }
                 }
                 Log.d(TAG, String.valueOf(ret));
 
