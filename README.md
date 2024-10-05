@@ -1,6 +1,6 @@
 # Auto tinder
 
-The goal of this project is to automate the tedious task to swiping. It should work with all dating apps on android that has a swipe feature.
+The goal of this project is to automate the tedious task of swiping. It should work with all dating apps on android that has a swipe feature.
 
 ## An apology
 

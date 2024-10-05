@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
-import keras
+from tensorflow import keras
 from keras import layers
 from keras import Sequential
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
@@ -17,13 +17,12 @@ def mprint(text):
     print(">> ", end='')
     print(text)
 
-
 def main(args: argparse.Namespace):
     mprint(f"Num GPUs Available: {len(tf.config.list_physical_devices('GPU'))}")
     tf.function(jit_compile=True)
     mprint("JIT ON")
 
-    #tf.debugging.set_log_device_placement(True)
+    # tf.debugging.set_log_device_placement(True)
     data_dir = pathlib.Path(os.path.join(os.getcwd(), "cache/data"))
     image_count = len(list(data_dir.glob('*/*.jpg')))
     mprint(image_count)
@@ -33,7 +32,6 @@ def main(args: argparse.Namespace):
     img_width = 180
 
     mprint("train_ds")
-
     train_ds = keras.utils.image_dataset_from_directory(
         data_dir,
         validation_split=0.2,
@@ -58,10 +56,7 @@ def main(args: argparse.Namespace):
 
     data_augmentation = keras.Sequential(
         [
-            layers.RandomFlip("horizontal",
-                              input_shape=(img_height,
-                                           img_width,
-                                           3)),
+            layers.RandomFlip("horizontal", input_shape=(img_height, img_width, 3)),
             layers.RandomRotation(0.1),
             layers.RandomZoom(0.1),
             layers.RandomContrast(0.1),
@@ -78,13 +73,13 @@ def main(args: argparse.Namespace):
         layers.MaxPooling2D(),
         layers.Conv2D(64, 3, padding='same', activation='relu'),
         layers.MaxPooling2D(),
-        layers.Dropout(0.3),  # Increased dropout rate
-        layers.Conv2D(128, 3, padding='same', activation='relu'),  # Additional layer
+        layers.Dropout(0.3),
+        layers.Conv2D(128, 3, padding='same', activation='relu'),
         layers.MaxPooling2D(),
-        layers.Dropout(0.3),  # Additional dropout
+        layers.Dropout(0.3),
         layers.Flatten(),
-        layers.Dense(256, activation='relu'),  # Increased dense layer size
-        layers.Dropout(0.5),  # Increased dropout rate
+        layers.Dense(256, activation='relu'),
+        layers.Dropout(0.5),
         layers.Dense(num_classes, name="outputs")
     ])
 
@@ -107,7 +102,7 @@ def main(args: argparse.Namespace):
     )
 
     if args.show:
-        visualize(history)
+        visualize(history, args.out_file)
     if args.ref_file is not None:
         predict(model, class_names, img_height, img_width, args.ref_file)
 
@@ -118,7 +113,7 @@ def main(args: argparse.Namespace):
         f.write(tflite_model)
 
 
-def visualize(history):
+def visualize(history, model_save_file: str):
     mprint("Visualize")
 
     acc = history.history['accuracy']
@@ -141,15 +136,18 @@ def visualize(history):
     plt.plot(epochs_range, val_loss, label='Validation Loss')
     plt.legend(loc='upper right')
     plt.title('Training and Validation Loss')
-    plt.show()
+
+    ext_start_idx = model_save_file.rfind('.')
+    if ext_start_idx != -1:
+        plt.savefig(f"{model_save_file[:ext_start_idx]}.png")
+
+    plt.show(block=True)
 
 
 def predict(model, class_names, img_height: int, img_width: int, ref_path: str):
     mprint("Predict on new data")
 
-    img = tf.keras.utils.load_img(
-        ref_path, target_size=(img_height, img_width)
-    )
+    img = tf.keras.utils.load_img(ref_path, target_size=(img_height, img_width))
     img_array = tf.keras.utils.img_to_array(img)
     img_array = tf.expand_dims(img_array, 0)  # Create a batch
 
