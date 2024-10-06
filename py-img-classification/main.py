@@ -1,141 +1,269 @@
 import argparse
+import fnmatch
 import os
 import pathlib
+import platform
+import sys
 import time
+from functools import lru_cache
 
 import matplotlib.pyplot as plt
-import numpy as np
-import tensorflow as tf
+from PIL import Image
 
-from tensorflow import keras
-from keras import layers
-from keras import Sequential
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 
-def mprint(text):
-    print(">> ", end='')
-    print(text)
+def mprint(text: str):
+    print(">>", text, sep=' ')
 
-def main(args: argparse.Namespace):
-    mprint(f"Num GPUs Available: {len(tf.config.list_physical_devices('GPU'))}")
-    tf.function(jit_compile=True)
-    mprint("JIT ON")
 
-    # tf.debugging.set_log_device_placement(True)
+def progress_bar(percent: float, bar_length: int = 30, suffix: str = '', prefix: str = ''):
+    bar = '#' * int(bar_length * percent) + '-' * (bar_length - int(bar_length * percent))
+    sys.stdout.write(f'\r{prefix}[{bar}] {percent * 100:.2f}%{suffix}')
+    sys.stdout.flush()
+
+
+@lru_cache(maxsize=1)
+def get_device():
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    elif torch.backends.rocm.is_available():
+        return torch.device("rocm")
+    return torch.device("cpu")
+
+
+class CNNModel(nn.Module):
+    def __init__(self, num_classes, img_width: int, img_height: int):
+        super(CNNModel, self).__init__()
+        self.data_augmentation = nn.Sequential(
+            nn.Conv2d(3, 16, kernel_size=3, padding=1),  # 3 input channels (RGB)
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2),
+            nn.Conv2d(16, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2),
+            nn.Dropout(0.3),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2),
+            nn.Dropout(0.3)
+        )
+        self.flatten = nn.Flatten()
+        self.fc1 = nn.Linear(128 * (img_height // 16) * (img_width // 16), 256)  # Adjust the size
+        self.fc2 = nn.Linear(256, num_classes)
+        self.dropout = nn.Dropout(0.5)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x = self.data_augmentation(x)
+        x = self.flatten(x)
+        x = self.relu(self.fc1(x))
+        x = self.dropout(x)
+        x = self.fc2(x)
+        return x
+
+
+def main(argv: argparse.Namespace):
+    mprint(f"python: {platform.python_version()}")
+    mprint(f"torch {torch.__version__} CUDA: {torch.cuda.is_available()}")
+
     data_dir = pathlib.Path(os.path.join(os.getcwd(), "cache/data"))
-    image_count = len(list(data_dir.glob('*/*.jpg')))
-    mprint(image_count)
+    image_count = sum(len(fnmatch.filter(files, '*.jpg')) for _, _, files in os.walk(data_dir))
+    mprint(f"Image count: {image_count}")
 
-    batch_size = 32
+    # Hyperparameters
     img_height = 180
     img_width = 180
-
-    mprint("train_ds")
-    train_ds = keras.utils.image_dataset_from_directory(
-        data_dir,
-        validation_split=0.2,
-        subset="training",
-        seed=123,
-        image_size=(img_height, img_width),
-        batch_size=batch_size)
-
-    mprint("val_ds")
-    val_ds = keras.utils.image_dataset_from_directory(
-        data_dir,
-        validation_split=0.2,
-        subset="validation",
-        seed=123,
-        image_size=(img_height, img_width),
-        batch_size=batch_size)
-
-    class_names = train_ds.class_names  # type: ignore
-    print(f"class_names: {class_names}")
-
-    num_classes = len(class_names)
-
-    data_augmentation = keras.Sequential(
-        [
-            layers.RandomFlip("horizontal", input_shape=(img_height, img_width, 3)),
-            layers.RandomRotation(0.1),
-            layers.RandomZoom(0.1),
-            layers.RandomContrast(0.1),
-            layers.RandomBrightness(0.1)
-        ]
-    )
-
-    model = Sequential([
-        data_augmentation,
-        layers.Rescaling(1.0 / 255),
-        layers.Conv2D(16, 3, padding='same', activation='relu'),
-        layers.MaxPooling2D(),
-        layers.Conv2D(32, 3, padding='same', activation='relu'),
-        layers.MaxPooling2D(),
-        layers.Conv2D(64, 3, padding='same', activation='relu'),
-        layers.MaxPooling2D(),
-        layers.Dropout(0.3),
-        layers.Conv2D(128, 3, padding='same', activation='relu'),
-        layers.MaxPooling2D(),
-        layers.Dropout(0.3),
-        layers.Flatten(),
-        layers.Dense(256, activation='relu'),
-        layers.Dropout(0.5),
-        layers.Dense(num_classes, name="outputs")
-    ])
-
-    early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=0.0001)
-
-    model.compile(optimizer=keras.optimizers.Adam(learning_rate=0.001),
-                  loss=keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-                  metrics=['accuracy'])
-
-    model.summary()
-
-    mprint("Fit")
+    batch_size = 32
     epochs = 50
-    history = model.fit(
-        train_ds,
-        validation_data=val_ds,
-        epochs=epochs,
-        callbacks=[early_stopping, reduce_lr]
-    )
+    learning_rate = 0.001
 
-    if args.show:
-        visualize(history, args.out_file)
-    if args.ref_file is not None:
-        predict(model, class_names, img_height, img_width, args.ref_file)
+    norm_vecs = ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
-    tflite_model = converter.convert()
+    # Data augmentations
+    data_transforms = {
+        'train': transforms.Compose([
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomRotation(10),
+            transforms.RandomResizedCrop((img_height, img_width)),
+            transforms.ColorJitter(brightness=0.1, contrast=0.1),
+            transforms.RandomGrayscale(0.1),
+            transforms.ToTensor(),
+            transforms.Normalize(*norm_vecs)  # Normalization
+        ]),
+        'val': transforms.Compose([
+            transforms.Resize((img_height, img_width)),
+            transforms.ToTensor(),
+            transforms.Normalize(*norm_vecs)
+        ])
+    }
 
-    with open(args.out_file, 'wb') as f:
-        f.write(tflite_model)
+    # Load datasets
+    train_ds = datasets.ImageFolder(os.path.join(data_dir, 'train'), transform=data_transforms['train'])
+    val_ds = datasets.ImageFolder(os.path.join(data_dir, 'val'), transform=data_transforms['val'])
+
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
+
+    # Get class names
+    class_names = train_ds.classes
+    num_classes = len(class_names)
+    mprint(f'class_names: {class_names}')
+
+    # Instantiate the model
+    model = torch.jit.script(CNNModel(num_classes, img_width=img_width, img_height=img_height))
+    mprint("Model JIT: True")
+
+    # Define loss function and optimizer
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=3, min_lr=0.0001)
+
+    # Training loop
+    device = get_device()
+    mprint(f"device type: {device.type}")
+    model.to(device)
+
+    best_val_loss = float('inf')
+    early_stopping_patience = 5
+    epochs_no_improve = 0
+
+    history = {
+        'train_loss': [],
+        'val_loss': [],
+        'train_acc': [],
+        'val_acc': []
+    }
+
+    for epoch in range(epochs):
+        mprint(f"Epoch {epoch + 1}/{epochs}")
+
+        # Training phase
+        model.train()
+        running_loss = 0.0
+        correct_preds = 0
+        total_preds = 0
+
+        train_loader_len = len(train_loader.dataset)
+        item_count = round(train_loader_len / batch_size)
+        mprint(f"item_count: {item_count}")
+
+        for idx, (images, labels) in enumerate(train_loader):
+            progress_bar((idx + 1) / item_count, suffix=f" {idx + 1}/{item_count}")
+            images, labels = images.to(device), labels.to(device)
+
+            optimizer.zero_grad()
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item() * images.size(0)
+            _, predicted = torch.max(outputs, 1)
+            correct_preds += (predicted == labels).sum().item()
+            total_preds += labels.size(0)
+        print()
+
+        train_loss = running_loss / train_loader_len
+        train_acc = correct_preds / total_preds
+
+        history['train_loss'].append(train_loss)
+        history['train_acc'].append(train_acc)
+        mprint(f"Training Loss: {train_loss:.4f}, Training Accuracy: {train_acc:.4f}")
+
+        # Validation phase
+        model.eval()
+        val_loss = 0.0
+        correct_preds = 0
+        total_preds = 0
+        with torch.no_grad():
+            val_loader_len = len(val_loader.dataset)
+            item_count = round(val_loader_len / batch_size)
+            mprint(f"item_count: {item_count}")
+
+            for idx, (images, labels) in enumerate(val_loader):
+                progress_bar((idx + 1) / item_count, suffix=f" {idx + 1}/{item_count}")
+
+                images, labels = images.to(device), labels.to(device)
+
+                outputs = model(images)
+                loss = criterion(outputs, labels)
+
+                val_loss += loss.item() * images.size(0)
+                _, predicted = torch.max(outputs, 1)
+                correct_preds += (predicted == labels).sum().item()
+                total_preds += labels.size(0)
+            print()
+
+        val_loss /= val_loader_len
+        val_acc = correct_preds / total_preds
+
+        history['val_loss'].append(val_loss)
+        history['val_acc'].append(val_acc)
+        mprint(f"Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_acc:.4f}")
+
+        # Learning rate scheduler
+        scheduler.step(val_loss)
+
+        # Early stopping logic
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), f"{argv.out_file}.tmp")
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+            if epochs_no_improve >= early_stopping_patience:
+                mprint("Early stopping triggered")
+                break
+
+    mprint("Training complete!")
+
+    if argv.show:
+        visualize(history, argv.out_file)
+    if argv.ref_file is not None:
+        predict(model, class_names, norm_vecs, img_height, img_width, argv.ref_file)
+
+    # Load the best model for inference
+    model.load_state_dict(torch.load(f"{argv.out_file}.tmp"))
+    torch.save(model.state_dict(), argv.out_file)
+    mprint(f"Model saved to \"{argv.out_file}\"")
 
 
 def visualize(history, model_save_file: str):
     mprint("Visualize")
 
-    acc = history.history['accuracy']
-    val_acc = history.history['val_accuracy']
+    epochs = range(1, len(history['train_loss']) + 1)
 
-    loss = history.history['loss']
-    val_loss = history.history['val_loss']
+    # Plot training and validation loss
+    plt.figure(figsize=(12, 4))
 
-    epochs_range = range(len(acc))
-
-    plt.figure(figsize=(8, 8))
+    # Loss plot
     plt.subplot(1, 2, 1)
-    plt.plot(epochs_range, acc, label='Training Accuracy')
-    plt.plot(epochs_range, val_acc, label='Validation Accuracy')
-    plt.legend(loc='lower right')
-    plt.title('Training and Validation Accuracy')
-
-    plt.subplot(1, 2, 2)
-    plt.plot(epochs_range, loss, label='Training Loss')
-    plt.plot(epochs_range, val_loss, label='Validation Loss')
-    plt.legend(loc='upper right')
+    plt.plot(epochs, history['train_loss'], 'r', label='Training Loss')
+    plt.plot(epochs, history['val_loss'], 'b', label='Validation Loss')
     plt.title('Training and Validation Loss')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+
+    # Accuracy plot
+    plt.subplot(1, 2, 2)
+    plt.plot(epochs, history['train_acc'], 'r', label='Training Accuracy')
+    plt.plot(epochs, history['val_acc'], 'b', label='Validation Accuracy')
+    plt.title('Training and Validation Accuracy')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.legend()
+
+    plt.tight_layout()
 
     ext_start_idx = model_save_file.rfind('.')
     if ext_start_idx != -1:
@@ -144,29 +272,39 @@ def visualize(history, model_save_file: str):
     plt.show(block=True)
 
 
-def predict(model, class_names, img_height: int, img_width: int, ref_path: str):
-    mprint("Predict on new data")
+def predict(model, class_names, norm_vecs: tuple, img_height: int, img_width: int, img_path: str):
+    image = Image.open(img_path)
+    image = transforms.Compose([
+        transforms.Resize((img_height, img_width)),
+        transforms.ToTensor(),
+        transforms.Normalize(*norm_vecs)
+    ])(image).unsqueeze(0).to(get_device())
 
-    img = tf.keras.utils.load_img(ref_path, target_size=(img_height, img_width))
-    img_array = tf.keras.utils.img_to_array(img)
-    img_array = tf.expand_dims(img_array, 0)  # Create a batch
+    model.eval()
+    with torch.no_grad():
+        output = model(image)
 
-    predictions = model.predict(img_array)
-    score = tf.nn.softmax(predictions[0])
+        probabilities = torch.softmax(output, dim=1)
 
-    print(
-        "This image most likely belongs to {} with a {:.2f} percent confidence."
-        .format(class_names[np.argmax(score)], 100 * np.max(score))
-    )
+        confidence, predicted = torch.max(probabilities, 1)
+        confidence_percentage = confidence.item() * 100
+        mprint(f'Predicted class: {class_names[predicted.item()]} with confidence: {confidence_percentage:.2f}%')
     time.sleep(3)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-s', '--show', help="shows training history on graph", required=False, default=False, action='store_true')
-    parser.add_argument('-r', '--ref-file', help="test out trained model on reference img", required=False, default=None)
-    parser.add_argument('-o', '--out-file', help="where the tflite file should be saved", required=True)
+    parser.add_argument('-s', '--show', help="shows training history on graph", required=False,
+                        default=False, action='store_true')
+    parser.add_argument('-r', '--ref-file', help="test out trained model on reference img",
+                        required=False, default=None)
+    parser.add_argument('-o', '--out-file', help="where the pth file should be saved",
+                        required=True)
 
     args = parser.parse_args()
+
+    if not args.out_file.endswith(".pth"):
+        print("Invalid output file type", file=sys.stderr)
+        exit(1)
 
     main(args)
