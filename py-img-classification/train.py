@@ -70,6 +70,13 @@ class CNNModel(nn.Module):
         x = self.fc2(x)
         return x
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
 
 def main(argv: argparse.Namespace):
     mprint(f"python: {platform.python_version()}")
@@ -83,7 +90,7 @@ def main(argv: argparse.Namespace):
     img_height = 180
     img_width = 180
     batch_size = 32
-    epochs = 50
+    epochs = 2 # 50
     learning_rate = 0.001
 
     norm_vecs = ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
@@ -154,7 +161,7 @@ def main(argv: argparse.Namespace):
 
         train_loader_len = len(train_loader.dataset)
         item_count = round(train_loader_len / batch_size)
-        mprint(f"item_count: {item_count}")
+        mprint(f"train item_count: {item_count}")
 
         for idx, (images, labels) in enumerate(train_loader):
             progress_bar((idx + 1) / item_count, suffix=f" {idx + 1}/{item_count}")
@@ -187,7 +194,7 @@ def main(argv: argparse.Namespace):
         with torch.no_grad():
             val_loader_len = len(val_loader.dataset)
             item_count = round(val_loader_len / batch_size)
-            mprint(f"item_count: {item_count}")
+            mprint(f"val item_count: {item_count}")
 
             for idx, (images, labels) in enumerate(val_loader):
                 progress_bar((idx + 1) / item_count, suffix=f" {idx + 1}/{item_count}")
@@ -269,7 +276,7 @@ def visualize(history, model_save_file: str):
     if ext_start_idx != -1:
         plt.savefig(f"{model_save_file[:ext_start_idx]}.png")
 
-    plt.show(block=True)
+    #plt.show(block=True)
 
 
 def predict(model, class_names, norm_vecs: tuple, img_height: int, img_width: int, img_path: str):
@@ -303,7 +310,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if not args.out_file.endswith(".pth"):
+    if not args.out_file.endswith(".pt"):
         print("Invalid output file type", file=sys.stderr)
         exit(1)
 

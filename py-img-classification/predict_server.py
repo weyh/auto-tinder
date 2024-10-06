@@ -8,21 +8,26 @@ import re
 import socket
 from functools import lru_cache
 
+import base64
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
-import base64
-import tensorflow as tf
-import numpy as np
-from tensorflow.lite.python.interpreter import Interpreter
+
+from PIL import Image
+
+import torch
+import torch.nn.functional as F
+from torchvision import transforms
+
 
 KEY = "4-KEY_for_this+s3rveR"
 CHECK_DATA_BASE = "<0_w_0>"
+
 CLASS_NAMES = ['o', 'x']
 IMG_HEIGHT, IMG_WIDTH = 180, 180
+NORM_VECS = ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 
 TEMP_FILE = "TMP_pred_img.jpg"
-
 
 @lru_cache(maxsize=2)
 def derive_key(key_str: str) -> bytes:
@@ -73,32 +78,33 @@ def get_files(in_dir: str, file_filter: List[str]) -> List[str]:
     return files
 
 
-def predict(interpreter: Interpreter, ref_path: str) -> (str, float):
-    # Get input and output tensors
-    input_details = interpreter.get_input_details()
-    output_details = interpreter.get_output_details()
+def preprocess_image(image_path: str):
+    preprocess = transforms.Compose([
+        transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=NORM_VECS[0], std=NORM_VECS[1]),
+    ])
 
-    # Preprocess the image
-    img = tf.keras.utils.load_img(ref_path, target_size=(IMG_HEIGHT, IMG_WIDTH))
-    img_array = tf.keras.utils.img_to_array(img)
-    img_array = np.expand_dims(img_array, axis=0)  # Create a batch
-    img_array = img_array.astype(np.float32)  # Ensure the data type matches the model's input
-
-    # Set the tensor to point to the input data to be inferred
-    interpreter.set_tensor(input_details[0]['index'], img_array)
-
-    # Run inference
-    interpreter.invoke()
-
-    # The function `get_tensor()` returns a copy of the tensor data
-    output_data = interpreter.get_tensor(output_details[0]['index'])
-    score = tf.nn.softmax(output_data[0])
-
-    return CLASS_NAMES[np.argmax(score)], 100 * np.max(score)
+    img = Image.open(image_path).convert("RGB")
+    img_tensor = preprocess(img).unsqueeze(0)
+    return img_tensor
 
 
-def load_model(model_dir: str) -> Interpreter:
-    models = get_files(model_dir, [".tflite"])
+def predict(model: torch.nn.Module, ref_path: str) -> (str, float):
+    img_tensor = preprocess_image(ref_path)
+
+    with torch.no_grad():
+        output = model(img_tensor)
+        probabilities = F.softmax(output[0], dim=0)
+
+    predicted_class = CLASS_NAMES[probabilities.argmax()]
+    confidence = 100 * probabilities.max().item()
+
+    return predicted_class, confidence
+
+
+def load_model(model_dir: str) -> torch.nn.Module:
+    models = get_files(model_dir, [".pt", ".pth"])
 
     def extract_number(s):
         match = re.search(r'\d+', s)
@@ -108,9 +114,12 @@ def load_model(model_dir: str) -> Interpreter:
 
     print("Selected model: " + selected_model)
 
-    interpreter = Interpreter(model_path=selected_model)
-    interpreter.allocate_tensors()
-    return interpreter
+    # TODO: fix this import and move common vars to common.py
+    from train import CNNModel
+    model = CNNModel(len(CLASS_NAMES), img_width=IMG_WIDTH, img_height=IMG_HEIGHT)
+    tmp = torch.load(selected_model, map_location=torch.device("cpu"))
+    model.load_state_dict(tmp)
+    return model
 
 
 def start_server(ip: str, port: int, model_dir: str):
@@ -125,9 +134,7 @@ def start_server(ip: str, port: int, model_dir: str):
     """
     temp_img_file = os.path.join(tempfile.gettempdir(), TEMP_FILE)
 
-    interpreter = load_model(model_dir)
-    tf.function(jit_compile=True)
-    print("JIT ON")
+    model = load_model(model_dir)
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind((ip, port))
@@ -170,7 +177,7 @@ def start_server(ip: str, port: int, model_dir: str):
                     f.write(img_bytes)
                     written_size += len(img_bytes)
 
-            class_name, score = predict(interpreter, temp_img_file)
+            class_name, score = predict(model, temp_img_file)
             print(f"Rating: {class_name} {score}")
 
             conn.sendall(class_name.encode("utf-8"))
