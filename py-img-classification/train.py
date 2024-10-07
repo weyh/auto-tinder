@@ -5,7 +5,6 @@ import pathlib
 import platform
 import sys
 import time
-from functools import lru_cache
 
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -16,6 +15,8 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+import common
 
 
 def mprint(text: str):
@@ -28,56 +29,6 @@ def progress_bar(percent: float, bar_length: int = 30, suffix: str = '', prefix:
     sys.stdout.flush()
 
 
-@lru_cache(maxsize=1)
-def get_device():
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    elif torch.backends.rocm.is_available():
-        return torch.device("rocm")
-    return torch.device("cpu")
-
-
-class CNNModel(nn.Module):
-    def __init__(self, num_classes, img_width: int, img_height: int):
-        super(CNNModel, self).__init__()
-        self.data_augmentation = nn.Sequential(
-            nn.Conv2d(3, 16, kernel_size=3, padding=1),  # 3 input channels (RGB)
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2),
-            nn.Conv2d(16, 32, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2),
-            nn.Dropout(0.3),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2),
-            nn.Dropout(0.3)
-        )
-        self.flatten = nn.Flatten()
-        self.fc1 = nn.Linear(128 * (img_height // 16) * (img_width // 16), 256)  # Adjust the size
-        self.fc2 = nn.Linear(256, num_classes)
-        self.dropout = nn.Dropout(0.5)
-        self.relu = nn.ReLU()
-
-    def forward(self, x):
-        x = self.data_augmentation(x)
-        x = self.flatten(x)
-        x = self.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = self.fc2(x)
-        return x
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-
-
 def main(argv: argparse.Namespace):
     mprint(f"python: {platform.python_version()}")
     mprint(f"torch {torch.__version__} CUDA: {torch.cuda.is_available()}")
@@ -87,29 +38,25 @@ def main(argv: argparse.Namespace):
     mprint(f"Image count: {image_count}")
 
     # Hyperparameters
-    img_height = 180
-    img_width = 180
     batch_size = 32
-    epochs = 2 # 50
+    epochs = 50
     learning_rate = 0.001
-
-    norm_vecs = ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 
     # Data augmentations
     data_transforms = {
         'train': transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomRotation(10),
-            transforms.RandomResizedCrop((img_height, img_width)),
+            transforms.RandomResizedCrop((common.IMG_HEIGHT, common.IMG_WIDTH)),
             transforms.ColorJitter(brightness=0.1, contrast=0.1),
             transforms.RandomGrayscale(0.1),
             transforms.ToTensor(),
-            transforms.Normalize(*norm_vecs)  # Normalization
+            transforms.Normalize(*common.NORM_VECS)
         ]),
         'val': transforms.Compose([
-            transforms.Resize((img_height, img_width)),
+            transforms.Resize((common.IMG_HEIGHT, common.IMG_WIDTH)),
             transforms.ToTensor(),
-            transforms.Normalize(*norm_vecs)
+            transforms.Normalize(*common.NORM_VECS)
         ])
     }
 
@@ -126,7 +73,7 @@ def main(argv: argparse.Namespace):
     mprint(f'class_names: {class_names}')
 
     # Instantiate the model
-    model = torch.jit.script(CNNModel(num_classes, img_width=img_width, img_height=img_height))
+    model = torch.jit.script(common.MyModel(num_classes))
     mprint("Model JIT: True")
 
     # Define loss function and optimizer
@@ -135,7 +82,7 @@ def main(argv: argparse.Namespace):
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=3, min_lr=0.0001)
 
     # Training loop
-    device = get_device()
+    device = common.get_device()
     mprint(f"device type: {device.type}")
     model.to(device)
 
@@ -236,7 +183,7 @@ def main(argv: argparse.Namespace):
     if argv.show:
         visualize(history, argv.out_file)
     if argv.ref_file is not None:
-        predict(model, class_names, norm_vecs, img_height, img_width, argv.ref_file)
+        predict(model, class_names, argv.ref_file)
 
     # Load the best model for inference
     model.load_state_dict(torch.load(f"{argv.out_file}.tmp"))
@@ -276,16 +223,16 @@ def visualize(history, model_save_file: str):
     if ext_start_idx != -1:
         plt.savefig(f"{model_save_file[:ext_start_idx]}.png")
 
-    #plt.show(block=True)
+    plt.show(block=True)
 
 
-def predict(model, class_names, norm_vecs: tuple, img_height: int, img_width: int, img_path: str):
+def predict(model, class_names, img_path: str):
     image = Image.open(img_path)
     image = transforms.Compose([
-        transforms.Resize((img_height, img_width)),
+        transforms.Resize((common.IMG_HEIGHT, common.IMG_WIDTH)),
         transforms.ToTensor(),
-        transforms.Normalize(*norm_vecs)
-    ])(image).unsqueeze(0).to(get_device())
+        transforms.Normalize(*common.NORM_VECS)
+    ])(image).unsqueeze(0).to(common.get_device())
 
     model.eval()
     with torch.no_grad():

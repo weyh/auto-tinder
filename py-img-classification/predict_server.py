@@ -19,13 +19,13 @@ import torch
 import torch.nn.functional as F
 from torchvision import transforms
 
+import common
+
 
 KEY = "4-KEY_for_this+s3rveR"
 CHECK_DATA_BASE = "<0_w_0>"
 
 CLASS_NAMES = ['o', 'x']
-IMG_HEIGHT, IMG_WIDTH = 180, 180
-NORM_VECS = ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 
 TEMP_FILE = "TMP_pred_img.jpg"
 
@@ -80,9 +80,9 @@ def get_files(in_dir: str, file_filter: List[str]) -> List[str]:
 
 def preprocess_image(image_path: str):
     preprocess = transforms.Compose([
-        transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
+        transforms.Resize((common.IMG_HEIGHT, common.IMG_WIDTH)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=NORM_VECS[0], std=NORM_VECS[1]),
+        transforms.Normalize(mean=common.NORM_VECS[0], std=common.NORM_VECS[1]),
     ])
 
     img = Image.open(image_path).convert("RGB")
@@ -114,9 +114,7 @@ def load_model(model_dir: str) -> torch.nn.Module:
 
     print("Selected model: " + selected_model)
 
-    # TODO: fix this import and move common vars to common.py
-    from train import CNNModel
-    model = CNNModel(len(CLASS_NAMES), img_width=IMG_WIDTH, img_height=IMG_HEIGHT)
+    model = common.MyModel(len(CLASS_NAMES))
     tmp = torch.load(selected_model, map_location=torch.device("cpu"))
     model.load_state_dict(tmp)
     return model
