@@ -16,7 +16,6 @@ from cryptography.hazmat.backends import default_backend
 from PIL import Image
 
 import torch
-import torch.nn.functional as F
 from torchvision import transforms
 
 import common
@@ -95,7 +94,7 @@ def predict(model: torch.nn.Module, ref_path: str) -> (str, float):
 
     with torch.no_grad():
         output = model(img_tensor)
-        probabilities = F.softmax(output[0], dim=0)
+        probabilities = torch.nn.functional.softmax(output[0], dim=0)
 
     predicted_class = CLASS_NAMES[probabilities.argmax()]
     confidence = 100 * probabilities.max().item()

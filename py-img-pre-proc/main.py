@@ -100,8 +100,8 @@ def main(args: argparse.Namespace):
             rnd = random.randint(0, 2 ** 64 - 1)
             file_name = f"{os.path.basename(png_path)[:-4]}_{rnd}.png"
 
-            # There is ~50% chance that img will be copied to val
-            val_idx = rnd & 1
+            # There is ~33% chance that img will be copied to val
+            val_idx = int(rnd % 3 == 0)
             working_dir = dir_struct[val_idx]
 
             if re.match(".*(ok)_.+.png$", png_path):
@@ -121,7 +121,7 @@ def main(args: argparse.Namespace):
             rnd = random.randint(0, 2 ** 64 - 1)
             file_name = f"{os.path.basename(jpg_path)[:-4]}_{rnd}.jpg"
 
-            val_idx = rnd & 1
+            val_idx = int(rnd % 3 == 0)
             working_dir = dir_struct[val_idx]
 
             if re.match(".*(ok)_.+.jp(e|)g$", jpg_path):
