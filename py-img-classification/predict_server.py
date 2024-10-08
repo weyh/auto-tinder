@@ -36,17 +36,14 @@ def derive_key(key_str: str) -> bytes:
 
 
 def decrypt(encrypted_str: str, key: str) -> str:
-    # Decode the base64-encoded encrypted string
     encrypted_data = base64.b64decode(encrypted_str)
 
     # Derive the AES key
     derived_key = derive_key(key)[:16]  # AES-128 bit key
 
-    # Initialize the cipher for AES decryption with ECB mode
     cipher = Cipher(algorithms.AES(derived_key), modes.ECB(), backend=default_backend())
     decryptor = cipher.decryptor()
 
-    # Decrypt and remove padding
     decrypted_data = decryptor.update(encrypted_data) + decryptor.finalize()
 
     # Remove padding (PKCS7 padding)
@@ -114,7 +111,7 @@ def load_model(model_dir: str) -> torch.nn.Module:
     print("Selected model: " + selected_model)
 
     model = common.MyModel(len(CLASS_NAMES))
-    tmp = torch.load(selected_model, map_location=torch.device("cpu"))
+    tmp = torch.load(selected_model, map_location=torch.device("cpu"), weights_only=False)
     model.load_state_dict(tmp)
     return model
 

@@ -186,7 +186,7 @@ def main(argv: argparse.Namespace):
         predict(model, class_names, argv.ref_file)
 
     # Load the best model for inference
-    model.load_state_dict(torch.load(f"{argv.out_file}.tmp"))
+    model.load_state_dict(torch.load(f"{argv.out_file}.tmp"), weights_only=False)
     torch.save(model.state_dict(), argv.out_file)
     mprint(f"Model saved to \"{argv.out_file}\"")
 
@@ -252,7 +252,7 @@ if __name__ == "__main__":
                         default=False, action='store_true')
     parser.add_argument('-r', '--ref-file', help="test out trained model on reference img",
                         required=False, default=None)
-    parser.add_argument('-o', '--out-file', help="where the pth file should be saved",
+    parser.add_argument('-o', '--out-file', help="where the pt file should be saved",
                         required=True)
 
     args = parser.parse_args()
