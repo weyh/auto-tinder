@@ -1,10 +1,10 @@
-#import os
-#os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
-import tensorflow as tf
-print(tf.__version__)
-print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
-
 import platform
-print(platform.python_version())
 
+from common import *
+
+
+print(f"python: {platform.python_version()}")
+print(f"torch {torch.__version__} device: {get_device()}")
+
+x = torch.rand(5, 3)
+print(x)

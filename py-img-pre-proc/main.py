@@ -72,11 +72,26 @@ def main(args: argparse.Namespace):
         files_jpg = get_files(args.in_dir, [".jpg", ".jpeg"])
         files_png = get_files(args.in_dir, [".png"])
 
-        ok_dir = os.path.join(args.out_dir, "ok")
-        x_dir = os.path.join(args.out_dir, "x")
+        train_dir = os.path.join(args.out_dir, "train")
+        val_dir = os.path.join(args.out_dir, "val")
 
-        os.makedirs(ok_dir, exist_ok=True)
-        os.makedirs(x_dir, exist_ok=True)
+        dir_struct = [
+            {
+                "ok": os.path.join(train_dir, "ok"),
+                "x": os.path.join(train_dir, "x")
+            },
+            {
+                "ok": os.path.join(val_dir, "ok"),
+                "x": os.path.join(val_dir, "x")
+            }
+        ]
+
+        os.makedirs(train_dir, exist_ok=True)
+        os.makedirs(val_dir, exist_ok=True)
+
+        for item in dir_struct:
+            os.makedirs(item["ok"], exist_ok=True)
+            os.makedirs(item["x"], exist_ok=True)
 
         print("Starting png files:")
 
@@ -85,10 +100,14 @@ def main(args: argparse.Namespace):
             rnd = random.randint(0, 2 ** 64 - 1)
             file_name = f"{os.path.basename(png_path)[:-4]}_{rnd}.png"
 
+            # There is ~33% chance that img will be copied to val
+            val_idx = int(rnd % 3 == 0)
+            working_dir = dir_struct[val_idx]
+
             if re.match(".*(ok)_.+.png$", png_path):
-                path = os.path.join(ok_dir, file_name)
+                path = os.path.join(working_dir["ok"], file_name)
             elif re.match(".*(x)_.+.png$", png_path):
-                path = os.path.join(x_dir, file_name)
+                path = os.path.join(working_dir["x"], file_name)
             else:
                 continue
 
@@ -102,10 +121,13 @@ def main(args: argparse.Namespace):
             rnd = random.randint(0, 2 ** 64 - 1)
             file_name = f"{os.path.basename(jpg_path)[:-4]}_{rnd}.jpg"
 
+            val_idx = int(rnd % 3 == 0)
+            working_dir = dir_struct[val_idx]
+
             if re.match(".*(ok)_.+.jp(e|)g$", jpg_path):
-                path = os.path.join(ok_dir, file_name)
+                path = os.path.join(working_dir["ok"], file_name)
             elif re.match(".*(x)_.+.jp(e|)g$", jpg_path):
-                path = os.path.join(x_dir, file_name)
+                path = os.path.join(working_dir["x"], file_name)
             else:
                 return
 
