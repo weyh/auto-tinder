@@ -186,7 +186,7 @@ def main(argv: argparse.Namespace):
         predict(model, class_names, argv.ref_file)
 
     # Load the best model for inference
-    model.load_state_dict(torch.load(f"{argv.out_file}.tmp"), weights_only=False)
+    model.load_state_dict(torch.load(f"{argv.out_file}.tmp", weights_only=False))
     torch.save(model.state_dict(), argv.out_file)
     mprint(f"Model saved to \"{argv.out_file}\"")
 
