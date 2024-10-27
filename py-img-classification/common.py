@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 
-IMG_HEIGHT = 180
+IMG_HEIGHT = 360
 IMG_WIDTH = 180
 
 NORM_VECS = ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
@@ -23,16 +23,20 @@ class MyModel(nn.Module):
         self.data_augmentation = nn.Sequential(
             nn.Conv2d(3, 16, kernel_size=3, padding=1),  # 3 input channels (RGB)
             nn.ReLU(),
+
             nn.MaxPool2d(kernel_size=2),
             nn.Conv2d(16, 32, kernel_size=3, padding=1),
             nn.ReLU(),
+
             nn.MaxPool2d(kernel_size=2),
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
             nn.ReLU(),
+
             nn.MaxPool2d(kernel_size=2),
             nn.Dropout(0.3),
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
             nn.ReLU(),
+            
             nn.MaxPool2d(kernel_size=2),
             nn.Dropout(0.3)
         )
