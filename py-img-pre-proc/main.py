@@ -104,9 +104,9 @@ def main(args: argparse.Namespace):
             val_idx = int(rnd % 3 == 0)
             working_dir = dir_struct[val_idx]
 
-            if re.match(".*(ok)_.+.png$", png_path):
+            if re.match(".*(ok)_.+.((png)|(PNG))$", png_path):
                 path = os.path.join(working_dir["ok"], file_name)
-            elif re.match(".*(x)_.+.png$", png_path):
+            elif re.match(".*(x)_.+.((png)|(PNG))$", png_path):
                 path = os.path.join(working_dir["x"], file_name)
             else:
                 continue
@@ -117,49 +117,29 @@ def main(args: argparse.Namespace):
 
         print("\nStarting jpg files:")
 
-        def process_jpg(jpg_path: str):
+        files_jpg_len = len(files_jpg)
+        for i, jpg_path in enumerate(files_jpg):
+            progress_bar(i / files_jpg_len)
+
             rnd = random.randint(0, 2 ** 64 - 1)
             file_name = f"{os.path.basename(jpg_path)[:-4]}_{rnd}.jpg"
 
             val_idx = int(rnd % 3 == 0)
             working_dir = dir_struct[val_idx]
 
-            if re.match(".*(ok)_.+.jp(e|)g$", jpg_path):
+            if re.match(".*(ok)(_.+|).((jp(e|)g)|(JP(E|)G))$", jpg_path):
                 path = os.path.join(working_dir["ok"], file_name)
-            elif re.match(".*(x)_.+.jp(e|)g$", jpg_path):
+            elif re.match(".*(x)(_.+|).((jp(e|)g)|(JP(E|)G))$", jpg_path):
                 path = os.path.join(working_dir["x"], file_name)
             else:
-                return
+                continue
 
             try:
                 img = resize_image(jpg_path, 0.6)
                 img.save(path, 'JPEG', quality=85)
             except OSError:
                 print(f"{jpg_path} is bad, SKIP", file=sys.stderr)
-
-        files_jpg_len = len(files_jpg)
-        it_files_jpg = iter(files_jpg)
-
-        for i, (a, b, c) in enumerate(zip(it_files_jpg, it_files_jpg, it_files_jpg)):
-            progress_bar((i + 1) / (files_jpg_len / 3))
-
-            t1 = threading.Thread(target=process_jpg, args=(a,))
-            t2 = threading.Thread(target=process_jpg, args=(b,))
-            t3 = threading.Thread(target=process_jpg, args=(c,))
-
-            t1.start()
-            t2.start()
-            t3.start()
-
-            t1.join()
-            t2.join()
-            t3.join()
-
-        for i, jpg_path in enumerate(files_jpg[files_jpg_len - files_jpg_len % 3:]):
-            progress_bar(((files_jpg_len - files_jpg_len % 3) + i + 1) / files_jpg_len)
-            process_jpg(jpg_path)
-
-        print()
+        progress_bar(1, suffix="\n")
     finally:
         if args.zip:
             print("\nCleanup zip artifacts")
