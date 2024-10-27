@@ -5,8 +5,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
 import android.os.Bundle;
@@ -18,11 +16,10 @@ import android.os.VibratorManager;
 import android.provider.Settings;
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.util.Log;
+import android.view.View;
 import android.view.accessibility.AccessibilityManager;
 import android.widget.CheckBox;
 import android.widget.EditText;
-import android.widget.ImageView;
 import android.widget.Toast;
 import android.content.BroadcastReceiver;
 
@@ -31,20 +28,23 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.databinding.DataBindingUtil;
+import androidx.lifecycle.ViewModelProvider;
 
+import com.example.tinderscreenshottaker.databinding.ActivityMainBinding;
+import com.example.tinderscreenshottaker.model.LogView;
 import com.example.tinderscreenshottaker.service.FloatService;
 import com.example.tinderscreenshottaker.service.PredictionFloatService;
 import com.example.tinderscreenshottaker.service.ScreenRecordService;
 import com.example.tinderscreenshottaker.service.ScreenshotImgType;
 import com.example.tinderscreenshottaker.service.SwipeService;
 import com.example.tinderscreenshottaker.util.AccessibilityUtil;
-import com.example.tinderscreenshottaker.util.FileWriterUtil;
+import com.example.tinderscreenshottaker.util.ELog;
+import com.example.tinderscreenshottaker.util.FileUtil;
 import com.example.tinderscreenshottaker.util.PredictClient;
 import com.example.tinderscreenshottaker.util.VibrationEffectUtil;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Objects;
 
 import kotlin.Pair;
@@ -52,6 +52,8 @@ import kotlin.Pair;
 public class MainActivity extends AppCompatActivity {
     private static final int CODE_DRAW_OVER_OTHER_APP_PERMISSION = 1000;
     private static final int CODE_REQUEST_CAPTURE = 1001;
+
+    private static final FileUtil.WorkingDir WORKING_DIR = new FileUtil.WorkingDir("tinder_screenshot_taker");
 
     private final String TAG = this.getClass().getSimpleName();
 
@@ -65,26 +67,25 @@ public class MainActivity extends AppCompatActivity {
 
     private ScreenshotImgType target = ScreenshotImgType.Unknown;
 
-    private Map<ScreenshotImgType, ImageView> imgViews;
-
-    private FileWriterUtil fileWriterUtil;
-
     private Handler backendHandler;
     private PredictClient predictClient;
 
     private boolean autoSwipeEnabled = true;
 
+    private ActivityMainBinding binding;
+    private LogView logView;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         myBroadcastReceiver = new MyBroadcastReceiver(this);
-        imgViews = new HashMap<>();
 
         try {
-            fileWriterUtil = new FileWriterUtil(this, "tinder_screenshot_taker");
+            FileUtil.init(this);
+            FileUtil.createDirInDownloads(WORKING_DIR);
         } catch (Exception e) {
             Toast.makeText(this, "Delete folder 'tinder_screenshot_taker'", Toast.LENGTH_LONG).show();
-            Log.e(TAG, "Failed to create file writer", e);
+            ELog.e(TAG, "Failed to create file writer " + e);
             finish();
         }
 
@@ -118,6 +119,8 @@ public class MainActivity extends AppCompatActivity {
         } else {
             start();
         }
+
+        ELog.i(TAG, "MainActivity created");
     }
 
     private void showAccessibilityPrompt() {
@@ -145,14 +148,16 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void initializeView() {
+        binding = DataBindingUtil.setContentView(this, R.layout.activity_main);
+        binding.setLifecycleOwner(this);
+
         final var ip = sharedPreferences.getString("ip", getString(R.string.DefaultIpDevInput));
         final var port = sharedPreferences.getString("port", getString(R.string.DefaultPort));
         autoSwipeEnabled = sharedPreferences.getBoolean("autoSwipe",
                 Boolean.getBoolean(getString(R.string.DefaultAutoSwipeEnabled)));
 
-        final EditText ipInput = findViewById(R.id.ipInput);
-        ipInput.setText(ip);
-        ipInput.addTextChangedListener(new TextWatcher() {
+        binding.ipInput.setText(ip);
+        binding.ipInput.addTextChangedListener(new TextWatcher() {
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 final SharedPreferences.Editor editor = sharedPreferences.edit();
@@ -167,9 +172,8 @@ public class MainActivity extends AppCompatActivity {
             public void afterTextChanged(Editable editable) {  }
         });
 
-        final EditText portInput = findViewById(R.id.portInput);
-        portInput.setText(port);
-        portInput.addTextChangedListener(new TextWatcher() {
+        binding.portInput.setText(port);
+        binding.portInput.addTextChangedListener(new TextWatcher() {
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 final SharedPreferences.Editor editor = sharedPreferences.edit();
@@ -184,24 +188,33 @@ public class MainActivity extends AppCompatActivity {
             public void afterTextChanged(Editable editable) {  }
         });
 
-        imgViews.put(ScreenshotImgType.Ok, (ImageView) findViewById(R.id.imageView));
-        imgViews.put(ScreenshotImgType.X, (ImageView) findViewById(R.id.imageView2));
-
-        findViewById(R.id.start_btn).setOnClickListener(view -> {
+        binding.startBtn.setOnClickListener(view -> {
             if (!isRecording) {
                 vibrator.vibrate(VibrationEffectUtil.MS_10);
                 startActivityForResult(projectionManager.createScreenCaptureIntent(), CODE_REQUEST_CAPTURE);
             }
         });
 
-        final CheckBox autoSwipeCheckBox = findViewById(R.id.autoSwipe);
-        autoSwipeCheckBox.setChecked(autoSwipeEnabled);
-        autoSwipeCheckBox.setOnClickListener(view -> {
+        binding.autoSwipe.setChecked(autoSwipeEnabled);
+        binding.autoSwipe.setOnClickListener(view -> {
             autoSwipeEnabled = ((CheckBox) view).isChecked();
             final SharedPreferences.Editor editor = sharedPreferences.edit();
             editor.putBoolean("autoSwipe", autoSwipeEnabled);
             editor.apply();
         });
+
+        // Initialize logs
+        logView = new ViewModelProvider(this).get(LogView.class);
+        binding.setLogViewModel(logView);
+
+        logView.getText().observe(this, newText -> {
+            binding.logScroll.post(() -> {
+                binding.logScroll.fullScroll(View.FOCUS_DOWN);
+            });
+        });
+
+        logView.setText("Starting log...\n");
+        ELog.init(logView);
     }
 
     @Override
@@ -209,12 +222,13 @@ public class MainActivity extends AppCompatActivity {
         switch (requestCode) {
             case CODE_DRAW_OVER_OTHER_APP_PERMISSION:
                 if (Settings.canDrawOverlays(this)) {
+                    ELog.d(TAG, "Draw over other app permission available. Starting the application.");
                     start();
                 } else { //Permission is not available
                     Toast.makeText(this,
                             "Draw over other app permission not available. Closing the application",
                             Toast.LENGTH_SHORT).show();
-                    Log.e(TAG, "Draw over other app permission not available. Closing the application");
+                    ELog.e(TAG, "Draw over other app permission not available. Closing the application");
                     finish();
                 }
             case CODE_REQUEST_CAPTURE:
@@ -235,12 +249,12 @@ public class MainActivity extends AppCompatActivity {
                         startService(startIntent);
                         isRecording = true;
                     } catch (RuntimeException e) {
-                        Log.e(TAG, "Failed to get MediaProjection", e);
+                        ELog.e(TAG, "Failed to get MediaProjection " + e);
                         finish();
                     }
                 } else {
                     Toast.makeText(this, "Screencast permission denied", Toast.LENGTH_SHORT).show();
-                    Log.w(TAG, "Screencast permission denied. Closing the application");
+                    ELog.w(TAG, "Screencast permission denied. Closing the application");
                 }
             default:
                 break;
@@ -251,27 +265,35 @@ public class MainActivity extends AppCompatActivity {
 
     @SuppressLint("DefaultLocale")
     public void presentScreenshot(final byte[] bitmapData) {
-        if (!isRecording)
-            return;
+        ELog.d(TAG, "Present screenshot");
 
-        final Bitmap bitmap = BitmapFactory.decodeByteArray(bitmapData, 0, bitmapData.length);
+        if (!isRecording) {
+            ELog.d(TAG, "Not recording");
+            return;
+        }
 
         if (target == ScreenshotImgType.AI) {
+            ELog.d(TAG, "Target: AI");
+
             backendHandler.post(() -> {
                 Pair<String, Float> ret;
                 try {
                     ret = predictClient.predict(bitmapData);
                 } catch (IllegalAccessError e) {
-                    Log.w(TAG, "Failed to predict retry");
+                    ELog.w(TAG, "Failed to predict retry");
                     try {
                         ret = predictClient.predict(bitmapData);
                     } catch (IllegalAccessError e2) {
-                        Log.e(TAG, "Failed to predict", e);
+                        ELog.e(TAG, "Failed to predict " + e);
                         Toast.makeText(this, "Prediction failed (connerr)", Toast.LENGTH_LONG).show();
                         return;
                     }
+                } catch (Exception e) {
+                    ELog.e(TAG, "Failed to predict " + e);
+                    Toast.makeText(this, "Prediction failed (connerr2)", Toast.LENGTH_LONG).show();
+                    return;
                 }
-                Log.d(TAG, String.valueOf(ret));
+                ELog.d(TAG, "Pred: " + ret);
 
                 final Intent prediction = new Intent(this, PredictionFloatService.class);
                 prediction.setAction(PredictionFloatService.ACTION_DISPLAY);
@@ -282,7 +304,7 @@ public class MainActivity extends AppCompatActivity {
                 if (autoSwipeEnabled) {
                     final AccessibilityManager accessibilityManager = (AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
                     if (!accessibilityManager.isTouchExplorationEnabled()) {
-                        Log.e(TAG, "Touch exploration not enabled. Gesture injection may not work.");
+                        ELog.e(TAG, "Touch exploration not enabled. Gesture injection may not work.");
                     }
 
                     final Intent swipeIntent = new Intent(this, SwipeService.class);
@@ -293,30 +315,32 @@ public class MainActivity extends AppCompatActivity {
                         swipeIntent.setAction(SwipeService.ACTION_SWIPE_RIGHT);
                         startService(swipeIntent);
                     } else {
-                        Log.e(TAG, "Unknown prediction: " + ret.getFirst());
+                        ELog.e(TAG, "Unknown prediction: " + ret.getFirst());
                     }
                 }
             });
             return;
         }
 
-        if (target == ScreenshotImgType.Ok) {
-            fileWriterUtil.writeJpegFileToDownloads(String.format("ok_%d.jpg", System.currentTimeMillis()), bitmapData);
-        } else if (target == ScreenshotImgType.X) {
-            fileWriterUtil.writeJpegFileToDownloads(String.format("x_%d.jpg", System.currentTimeMillis()), bitmapData);
-        }
-
-        ImageView v = imgViews.get(target);
-        if (v != null) {
-            v.setImageBitmap(bitmap);
-        } else {
-            Log.e(TAG, "Unknown target: " + target);
+        try {
+            if (target == ScreenshotImgType.Ok) {
+                ELog.d(TAG, "Target: OK");
+                FileUtil.writeJpegFile(WORKING_DIR, String.format("ok_%d.jpg", System.currentTimeMillis()), bitmapData);
+            } else if (target == ScreenshotImgType.X) {
+                ELog.d(TAG, "Target: X");
+                FileUtil.writeJpegFile(WORKING_DIR, String.format("x_%d.jpg", System.currentTimeMillis()), bitmapData);
+            }
+        } catch (Exception e) {
+            ELog.e(TAG, "Failed to write file " + e);
+            return;
         }
     }
 
     public void initiateTakeScreenshot(int target) {
-        if (!isRecording)
+        if (!isRecording) {
+            ELog.d(TAG, "Not recording");
             return;
+        }
 
         this.target = ScreenshotImgType.Companion.fromInt(target);
 
@@ -326,8 +350,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void initiateStopRecording() {
-        if (!isRecording)
+        if (!isRecording) {
+            ELog.d(TAG, "Not recording");
             return;
+        }
 
         final Intent stopIntent = new Intent(this, ScreenRecordService.class);
         stopIntent.setAction(ScreenRecordService.ACTION_STOP);
@@ -346,6 +372,15 @@ public class MainActivity extends AppCompatActivity {
         initiateStopRecording();
         unregisterReceiver(myBroadcastReceiver);
 
+        try {
+            final long now = System.currentTimeMillis();
+            FileUtil.writeFile(WORKING_DIR, now + "_log.txt",
+                    logView.getText().getValue().getBytes(), "text/plain");
+        } catch (Exception e) {
+            ELog.e(TAG, "Failed to write log file " + e);
+        }
+
+        ELog.close();
         super.onDestroy();
     }
 
@@ -380,30 +415,36 @@ public class MainActivity extends AppCompatActivity {
         public void onReceive(Context context, Intent intent) {
             switch (Objects.requireNonNull(intent.getAction())) {
                 case INVOKE_SCREENSHOT -> {
+                    ELog.d(TAG, "Broadcast Intent received:INVOKE_SCREENSHOT");
                     int data = intent.getIntExtra("data", -1);
                     ref.initiateTakeScreenshot(data);
                 }
                 case INVOKE_STOP_RECORDING -> {
-                    Toast.makeText(context, "Recording has been stopped", Toast.LENGTH_SHORT).show();
+                    ELog.d(TAG, "Broadcast Intent received:INVOKE_STOP_RECORDING");
 
+                    Toast.makeText(context, "Recording has been stopped", Toast.LENGTH_SHORT).show();
                     ref.initiateStopRecording();
                 }
                 case INVOKE_SCREENSHOT_TAKEN -> {
+                    ELog.d(TAG, "Broadcast Intent received:INVOKE_SCREENSHOT_TAKEN");
+
                     final byte[] bitmapData = intent.getByteArrayExtra(ScreenRecordService.EXTRA_BITMAP);
 
                     if (bitmapData != null) {
                         ref.presentScreenshot(bitmapData);
                     } else {
-                        Log.e(TAG, "Bitmap data is null (how did you get here)");
+                        ELog.e(TAG, "Bitmap data is null (how did you get here)");
                         throw new NullPointerException();
                     }
                 }
                 case INVOKE_AUTO_SWIPE_NEXT -> {
+                    ELog.d(TAG, "Broadcast Intent received:INVOKE_AUTO_SWIPE_NEXT");
+
                     if (!ref.autoSwipeEnabled) {
-                        Log.d(TAG, "Auto swipe is disabled");
+                        ELog.d(TAG, "Auto swipe is disabled");
                         return;
                     } else if (!ref.isRecording) {
-                        Log.d(TAG, "Not recording");
+                        ELog.d(TAG, "Not recording");
                         return;
                     }
 
@@ -413,7 +454,7 @@ public class MainActivity extends AppCompatActivity {
                     ref.sendBroadcast(broadcastIntent);
                 }
                 default ->
-                        Log.e(TAG, "Unknown action: " + intent.getAction());
+                        ELog.e(TAG, "Unknown action: " + intent.getAction());
             }
         }
     }

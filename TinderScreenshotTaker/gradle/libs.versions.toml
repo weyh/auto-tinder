@@ -10,9 +10,10 @@ activity = "1.9.2"
 constraintlayout = "2.1.4"
 kotlin = "2.0.0"
 coreKtx = "1.13.1"
+flexbox = "3.0.0"
 
 [libraries]
-endians = { module = "org.kotlincrypto.endians:endians", version.ref = "endians" }
+endians = { module = "org.kotlincrypto.endians:endians", version = "0.3.1" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
@@ -21,6 +22,7 @@ material = { group = "com.google.android.material", name = "material", version.r
 activity = { group = "androidx.activity", name = "activity", version.ref = "activity" }
 constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
 core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+flexbox = { group = "com.google.android.flexbox", name = "flexbox", version.ref = "flexbox" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
