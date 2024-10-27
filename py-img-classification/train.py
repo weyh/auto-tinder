@@ -30,17 +30,21 @@ def progress_bar(percent: float, bar_length: int = 30, suffix: str = '', prefix:
 
 
 def main(argv: argparse.Namespace):
+    start_time = time.time()
+
     mprint(f"python: {platform.python_version()}")
     mprint(f"torch {torch.__version__} CUDA: {torch.cuda.is_available()}")
 
     data_dir = pathlib.Path(os.path.join(os.getcwd(), "cache/data"))
     image_count = sum(len(fnmatch.filter(files, '*.jpg')) for _, _, files in os.walk(data_dir))
     mprint(f"Image count: {image_count}")
+    mprint(f"Image resolution: {common.IMG_WIDTH}x{common.IMG_HEIGHT}")
 
     # Hyperparameters
     batch_size = 32
     epochs = 50
-    learning_rate = 0.001
+    learning_rate = 0.0001
+    mprint(f"batch size: {batch_size}, epochs: {epochs}, lr: {learning_rate}")
 
     # Data augmentations
     data_transforms = {
@@ -79,7 +83,7 @@ def main(argv: argparse.Namespace):
     # Define loss function and optimizer
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=3, min_lr=0.0001)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=3, min_lr=learning_rate / 10)
 
     # Training loop
     device = common.get_device()
@@ -97,6 +101,7 @@ def main(argv: argparse.Namespace):
         'val_acc': []
     }
 
+    train_start_time = time.time()
     for epoch in range(epochs):
         mprint(f"Epoch {epoch + 1}/{epochs}")
 
@@ -111,7 +116,7 @@ def main(argv: argparse.Namespace):
         mprint(f"train item_count: {item_count}")
 
         for idx, (images, labels) in enumerate(train_loader):
-            progress_bar((idx + 1) / item_count, suffix=f" {idx + 1}/{item_count}")
+            progress_bar(idx / item_count, suffix=f" {idx}/{item_count}")
             images, labels = images.to(device), labels.to(device)
 
             optimizer.zero_grad()
@@ -124,7 +129,7 @@ def main(argv: argparse.Namespace):
             _, predicted = torch.max(outputs, 1)
             correct_preds += (predicted == labels).sum().item()
             total_preds += labels.size(0)
-        print()
+        progress_bar(1, suffix=f" {item_count}/{item_count}\n")
 
         train_loss = running_loss / train_loader_len
         train_acc = correct_preds / total_preds
@@ -144,7 +149,7 @@ def main(argv: argparse.Namespace):
             mprint(f"val item_count: {item_count}")
 
             for idx, (images, labels) in enumerate(val_loader):
-                progress_bar((idx + 1) / item_count, suffix=f" {idx + 1}/{item_count}")
+                progress_bar(idx / item_count, suffix=f" {idx}/{item_count}")
 
                 images, labels = images.to(device), labels.to(device)
 
@@ -155,7 +160,8 @@ def main(argv: argparse.Namespace):
                 _, predicted = torch.max(outputs, 1)
                 correct_preds += (predicted == labels).sum().item()
                 total_preds += labels.size(0)
-            print()
+
+            progress_bar(1, suffix=f" {item_count}/{item_count}\n")
 
         val_loss /= val_loader_len
         val_acc = correct_preds / total_preds
@@ -178,7 +184,10 @@ def main(argv: argparse.Namespace):
                 mprint("Early stopping triggered")
                 break
 
-    mprint("Training complete!")
+    elapsed_time = time.time() - train_start_time
+    hours, remainder = divmod(elapsed_time, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    mprint(f"Training complete in {int(hours):02}:{int(minutes):02}:{int(seconds):02}")
 
     if argv.show:
         visualize(history, argv.out_file)
@@ -189,6 +198,11 @@ def main(argv: argparse.Namespace):
     model.load_state_dict(torch.load(f"{argv.out_file}.tmp", weights_only=False))
     torch.save(model.state_dict(), argv.out_file)
     mprint(f"Model saved to \"{argv.out_file}\"")
+
+    elapsed_time = time.time() - start_time
+    hours, remainder = divmod(elapsed_time, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    mprint(f"Full run time: {int(hours):02}:{int(minutes):02}:{int(seconds):02}")
 
 
 def visualize(history, model_save_file: str):
@@ -223,7 +237,7 @@ def visualize(history, model_save_file: str):
     if ext_start_idx != -1:
         plt.savefig(f"{model_save_file[:ext_start_idx]}.png")
 
-    plt.show(block=True)
+    #plt.show(block=True)
 
 
 def predict(model, class_names, img_path: str):
