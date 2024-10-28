@@ -16,10 +16,9 @@ import android.os.VibratorManager;
 import android.provider.Settings;
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.view.View;
+import android.text.method.ScrollingMovementMethod;
 import android.view.accessibility.AccessibilityManager;
 import android.widget.CheckBox;
-import android.widget.EditText;
 import android.widget.Toast;
 import android.content.BroadcastReceiver;
 
@@ -73,7 +72,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean autoSwipeEnabled = true;
 
     private ActivityMainBinding binding;
-    private LogView logView;
+    private LogView logViewModel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -204,17 +203,12 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // Initialize logs
-        logView = new ViewModelProvider(this).get(LogView.class);
-        binding.setLogViewModel(logView);
+        logViewModel = new ViewModelProvider(this).get(LogView.class);
+        binding.setLogViewModel(logViewModel);
+        binding.logView.setMovementMethod(new ScrollingMovementMethod());
 
-        logView.getText().observe(this, newText -> {
-            binding.logScroll.post(() -> {
-                binding.logScroll.fullScroll(View.FOCUS_DOWN);
-            });
-        });
-
-        logView.setText("Starting log...\n");
-        ELog.init(logView);
+        logViewModel.setText("");
+        ELog.init(logViewModel);
     }
 
     @Override
@@ -248,6 +242,7 @@ public class MainActivity extends AppCompatActivity {
                         startIntent.putExtra(ScreenRecordService.EXTRA_DATA, data);
                         startService(startIntent);
                         isRecording = true;
+                        ELog.d(TAG, "CAPTURE: OK");
                     } catch (RuntimeException e) {
                         ELog.e(TAG, "Failed to get MediaProjection " + e);
                         finish();
@@ -304,7 +299,7 @@ public class MainActivity extends AppCompatActivity {
                 if (autoSwipeEnabled) {
                     final AccessibilityManager accessibilityManager = (AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
                     if (!accessibilityManager.isTouchExplorationEnabled()) {
-                        ELog.e(TAG, "Touch exploration not enabled. Gesture injection may not work.");
+                        ELog.w(TAG, "Touch exploration not enabled. Gesture injection may not work.");
                     }
 
                     final Intent swipeIntent = new Intent(this, SwipeService.class);
@@ -375,7 +370,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             final long now = System.currentTimeMillis();
             FileUtil.writeFile(WORKING_DIR, now + "_log.txt",
-                    logView.getText().getValue().getBytes(), "text/plain");
+                    logViewModel.getText().getValue().getBytes(), "text/plain");
         } catch (Exception e) {
             ELog.e(TAG, "Failed to write log file " + e);
         }

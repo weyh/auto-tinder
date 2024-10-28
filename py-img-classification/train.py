@@ -237,7 +237,7 @@ def visualize(history, model_save_file: str):
     if ext_start_idx != -1:
         plt.savefig(f"{model_save_file[:ext_start_idx]}.png")
 
-    #plt.show(block=True)
+    plt.show(block=True)
 
 
 def predict(model, class_names, img_path: str):

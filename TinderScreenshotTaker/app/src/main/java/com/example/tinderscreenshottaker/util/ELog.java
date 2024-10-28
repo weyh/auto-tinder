@@ -1,11 +1,21 @@
 package com.example.tinderscreenshottaker.util;
 
 import android.annotation.SuppressLint;
+import android.graphics.Color;
+import android.text.Spannable;
+import android.text.SpannableString;
+import android.text.style.ForegroundColorSpan;
 import android.util.Log;
 
 import com.example.tinderscreenshottaker.model.LogView;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
 public class ELog {
+    @SuppressLint("SimpleDateFormat")
+    private static final SimpleDateFormat sdf = new SimpleDateFormat("yy-MM-dd HH:mm:ss.SSS");
+
     private static LogView logView = null;
 
     private static final Object lock = new Object();
@@ -17,22 +27,22 @@ public class ELog {
     }
 
     public static void d(String tag, String msg) {
-        log("D", tag, msg);
+        log("DEBUG", tag, msg);
         Log.d(tag, msg);
     }
 
     public static void i(String tag, String msg) {
-        log("I", tag, msg);
+        log("INFO", tag, msg);
         Log.i(tag, msg);
     }
 
     public static void w(String tag, String msg) {
-        log("W", tag, msg);
+        log("WARN", tag, msg);
         Log.w(tag, msg);
     }
 
     public static void e(String tag, String msg) {
-        log("E", tag, msg);
+        log("ERROR", tag, msg);
         Log.e(tag, msg);
     }
 
@@ -40,8 +50,7 @@ public class ELog {
     private static void log(String logType, final String tag, final String msg) {
         synchronized (lock) {
             if(logView != null) {
-                final long now = System.currentTimeMillis();
-                logView.appendText(String.format("%s %d [%s]:\t%s\n", logType, now, tag, msg));
+                logView.preappendText(String.format("%s %s [%s]:\t%s\n", logType, sdf.format(new Date()), tag, msg));
             }
         }
     }
