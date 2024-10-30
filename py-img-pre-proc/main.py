@@ -2,13 +2,13 @@ import argparse
 import os
 import sys
 import random
-import threading
 import shutil
 import tempfile
 from typing import List
 import re
 from PIL import Image
 import zipfile
+import multiprocessing as mp
 
 
 def progress_bar(percent, bar_length=30, suffix=""):
@@ -60,6 +60,51 @@ def extract_zips(in_dir: str, out_dir: str):
     print()
 
 
+def process_pngs(dir_struct, files_png):
+    files_png_len = len(files_png)
+    for i, png_path in enumerate(files_png):
+        rnd = random.randint(0, 2 ** 64 - 1)
+        file_name = f"{os.path.basename(png_path)[:-4]}_{rnd}.png"
+
+        # There is ~33% chance that img will be copied to val
+        val_idx = int(rnd % 3 == 0)
+        working_dir = dir_struct[val_idx]
+
+        if re.match(".*(ok)_.+.((png)|(PNG))$", png_path):
+            path = os.path.join(working_dir["ok"], file_name)
+        elif re.match(".*(x)_.+.((png)|(PNG))$", png_path):
+            path = os.path.join(working_dir["x"], file_name)
+        else:
+            continue
+
+        progress_bar((i + 1) / files_png_len)
+
+        convert_png_to_jpg(png_path, path.replace("png", "jpg"), 80)
+    print()
+
+
+def process_jpgs(dir_struct, files_jpg):
+    for i, jpg_path in enumerate(files_jpg):
+        rnd = random.randint(0, 2 ** 64 - 1)
+        file_name = f"{os.path.basename(jpg_path)[:-4]}_{rnd}.jpg"
+
+        val_idx = int(rnd % 3 == 0)
+        working_dir = dir_struct[val_idx]
+
+        if re.match(".*(ok)(_.+|).((jp(e|)g)|(JP(E|)G))$", jpg_path):
+            path = os.path.join(working_dir["ok"], file_name)
+        elif re.match(".*(x)(_.+|).((jp(e|)g)|(JP(E|)G))$", jpg_path):
+            path = os.path.join(working_dir["x"], file_name)
+        else:
+            continue
+
+        try:
+            img = resize_image(jpg_path, 0.6)
+            img.save(path, 'JPEG', quality=85)
+        except OSError:
+            print(f"{jpg_path} is bad, SKIP", file=sys.stderr)
+
+
 def main(args: argparse.Namespace):
     if args.zip:
         print("ZIP mode")
@@ -94,51 +139,30 @@ def main(args: argparse.Namespace):
             os.makedirs(item["x"], exist_ok=True)
 
         print("Starting png files:")
+        process_pngs(dir_struct, files_png)
 
-        files_png_len = len(files_png)
-        for i, png_path in enumerate(files_png):
-            rnd = random.randint(0, 2 ** 64 - 1)
-            file_name = f"{os.path.basename(png_path)[:-4]}_{rnd}.png"
-
-            # There is ~33% chance that img will be copied to val
-            val_idx = int(rnd % 3 == 0)
-            working_dir = dir_struct[val_idx]
-
-            if re.match(".*(ok)_.+.((png)|(PNG))$", png_path):
-                path = os.path.join(working_dir["ok"], file_name)
-            elif re.match(".*(x)_.+.((png)|(PNG))$", png_path):
-                path = os.path.join(working_dir["x"], file_name)
-            else:
-                continue
-
-            progress_bar((i + 1) / files_png_len)
-
-            convert_png_to_jpg(png_path, path.replace("png", "jpg"), 80)
-
-        print("\nStarting jpg files:")
+        print("Starting jpg files:")
 
         files_jpg_len = len(files_jpg)
-        for i, jpg_path in enumerate(files_jpg):
-            progress_bar(i / files_jpg_len)
+        cpu_count = mp.cpu_count()
+        num_of_splits = cpu_count // 2
+        part_size = files_jpg_len // num_of_splits
+        remainder = files_jpg_len % num_of_splits
 
-            rnd = random.randint(0, 2 ** 64 - 1)
-            file_name = f"{os.path.basename(jpg_path)[:-4]}_{rnd}.jpg"
+        procs = []
 
-            val_idx = int(rnd % 3 == 0)
-            working_dir = dir_struct[val_idx]
+        for i in range(num_of_splits):
+            start = i * part_size + min(i, remainder)
+            end = start + part_size + (1 if i < remainder else 0)
+            part = files_jpg[start:end]
 
-            if re.match(".*(ok)(_.+|).((jp(e|)g)|(JP(E|)G))$", jpg_path):
-                path = os.path.join(working_dir["ok"], file_name)
-            elif re.match(".*(x)(_.+|).((jp(e|)g)|(JP(E|)G))$", jpg_path):
-                path = os.path.join(working_dir["x"], file_name)
-            else:
-                continue
+            p = mp.Process(target=process_jpgs, args=(dir_struct, part))
+            procs.append(p)
+            p.start()
 
-            try:
-                img = resize_image(jpg_path, 0.6)
-                img.save(path, 'JPEG', quality=85)
-            except OSError:
-                print(f"{jpg_path} is bad, SKIP", file=sys.stderr)
+        for i, p in enumerate(procs):
+            progress_bar(i / len(procs))
+            p.join()
         progress_bar(1, suffix="\n")
     finally:
         if args.zip:

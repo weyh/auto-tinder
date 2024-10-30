@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 
-IMG_HEIGHT = 360
+IMG_HEIGHT = 180
 IMG_WIDTH = 180
 
 NORM_VECS = ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
