@@ -17,6 +17,12 @@ def progress_bar(percent, bar_length=30, suffix=""):
     sys.stdout.flush()
 
 
+def qprint(text: str):
+    sys.stdout.write('\r')
+    sys.stdout.write(text)
+    sys.stdout.flush()
+
+
 def convert_png_to_jpg(png_path, jpg_path, quality):
     with Image.open(png_path) as img:
         # Convert image to RGB (PNG might have transparency channel which JPG does not support)
@@ -61,7 +67,6 @@ def extract_zips(in_dir: str, out_dir: str):
 
 
 def process_pngs(dir_struct, files_png):
-    files_png_len = len(files_png)
     for i, png_path in enumerate(files_png):
         rnd = random.randint(0, 2 ** 64 - 1)
         file_name = f"{os.path.basename(png_path)[:-4]}_{rnd}.png"
@@ -77,10 +82,8 @@ def process_pngs(dir_struct, files_png):
         else:
             continue
 
-        progress_bar((i + 1) / files_png_len)
-
         convert_png_to_jpg(png_path, path.replace("png", "jpg"), 80)
-    print()
+        qprint(f"DONE: {png_path}")
 
 
 def process_jpgs(dir_struct, files_jpg):
@@ -101,6 +104,7 @@ def process_jpgs(dir_struct, files_jpg):
         try:
             img = resize_image(jpg_path, 0.6)
             img.save(path, 'JPEG', quality=85)
+            qprint(f"DONE: {jpg_path}")
         except OSError:
             print(f"{jpg_path} is bad, SKIP", file=sys.stderr)
 
@@ -138,32 +142,57 @@ def main(args: argparse.Namespace):
             os.makedirs(item["ok"], exist_ok=True)
             os.makedirs(item["x"], exist_ok=True)
 
-        print("Starting png files:")
-        process_pngs(dir_struct, files_png)
-
-        print("Starting jpg files:")
-
-        files_jpg_len = len(files_jpg)
         cpu_count = mp.cpu_count()
-        num_of_splits = cpu_count // 2
-        part_size = files_jpg_len // num_of_splits
-        remainder = files_jpg_len % num_of_splits
+        worker_count = int(max(1, cpu_count * 0.8))
+        print(f"CPU core count: {cpu_count}, Worker count: {worker_count}")
 
-        procs = []
+        print("Starting png files:")
+        files_png_len = len(files_png)
 
-        for i in range(num_of_splits):
-            start = i * part_size + min(i, remainder)
-            end = start + part_size + (1 if i < remainder else 0)
-            part = files_jpg[start:end]
+        if files_png_len < 20:
+            print(f"Not enough images to multiprocess ({files_png_len})")
+            process_pngs(dir_struct, files_png)
+        else:
+            part_size = files_png_len // worker_count
+            remainder = files_png_len % worker_count
 
-            p = mp.Process(target=process_jpgs, args=(dir_struct, part))
-            procs.append(p)
-            p.start()
+            procs = []
 
-        for i, p in enumerate(procs):
-            progress_bar(i / len(procs))
-            p.join()
-        progress_bar(1, suffix="\n")
+            for i in range(worker_count):
+                start = i * part_size + min(i, remainder)
+                end = start + part_size + (1 if i < remainder else 0)
+                part = files_png[start:end]
+
+                p = mp.Process(target=process_pngs, args=(dir_struct, part))
+                procs.append(p)
+                p.start()
+
+            for i, p in enumerate(procs):
+                p.join()
+
+        print("\nStarting jpg files:")
+        files_jpg_len = len(files_jpg)
+
+        if files_png_len < 20:
+            print(f"Not enough images to multiprocess ({files_jpg_len})")
+            process_jpgs(dir_struct, files_jpg)
+        else:
+            part_size = files_jpg_len // worker_count
+            remainder = files_jpg_len % worker_count
+
+            procs = []
+
+            for i in range(worker_count):
+                start = i * part_size + min(i, remainder)
+                end = start + part_size + (1 if i < remainder else 0)
+                part = files_jpg[start:end]
+
+                p = mp.Process(target=process_jpgs, args=(dir_struct, part))
+                procs.append(p)
+                p.start()
+
+            for i, p in enumerate(procs):
+                p.join()
     finally:
         if args.zip:
             print("\nCleanup zip artifacts")

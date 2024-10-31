@@ -19,10 +19,6 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import common
 
 
-def mprint(text: str):
-    print(">>", text, sep=' ')
-
-
 def progress_bar(percent: float, bar_length: int = 30, suffix: str = '', prefix: str = ''):
     bar = '#' * int(bar_length * percent) + '-' * (bar_length - int(bar_length * percent))
     sys.stdout.write(f'\r{prefix}[{bar}] {percent * 100:.2f}%{suffix}')
@@ -32,19 +28,19 @@ def progress_bar(percent: float, bar_length: int = 30, suffix: str = '', prefix:
 def main(argv: argparse.Namespace):
     start_time = time.time()
 
-    mprint(f"python: {platform.python_version()}")
-    mprint(f"torch {torch.__version__} CUDA: {torch.cuda.is_available()}")
+    print("python:", platform.python_version())
+    print(f"torch {torch.__version__} CUDA: {torch.cuda.is_available()}")
 
     data_dir = pathlib.Path(os.path.join(os.getcwd(), "cache/data"))
     image_count = sum(len(fnmatch.filter(files, '*.jpg')) for _, _, files in os.walk(data_dir))
-    mprint(f"Image count: {image_count}")
-    mprint(f"Image resolution: {common.IMG_WIDTH}x{common.IMG_HEIGHT}")
+    print("Image count: ", image_count)
+    print(f"Image resolution: {common.IMG_WIDTH}x{common.IMG_HEIGHT}")
 
     # Hyperparameters
     batch_size = 32
     epochs = 50
     learning_rate = 0.0001
-    mprint(f"batch size: {batch_size}, epochs: {epochs}, lr: {learning_rate}")
+    print(f"batch size: {batch_size}, epochs: {epochs}, lr: {learning_rate}")
 
     # Data augmentations
     data_transforms = {
@@ -74,11 +70,11 @@ def main(argv: argparse.Namespace):
     # Get class names
     class_names = train_ds.classes
     num_classes = len(class_names)
-    mprint(f'class_names: {class_names}')
+    print("class_names: ", class_names)
 
     # Instantiate the model
     model = torch.jit.script(common.MyModel(num_classes))
-    mprint("Model JIT: True")
+    print("Model JIT: True")
 
     # Define loss function and optimizer
     criterion = nn.CrossEntropyLoss()
@@ -87,7 +83,7 @@ def main(argv: argparse.Namespace):
 
     # Training loop
     device = common.get_device()
-    mprint(f"device type: {device.type}")
+    print(f"device type: {device.type}")
     model.to(device)
 
     best_val_loss = float('inf')
@@ -103,7 +99,7 @@ def main(argv: argparse.Namespace):
 
     train_start_time = time.time()
     for epoch in range(epochs):
-        mprint(f"Epoch {epoch + 1}/{epochs}")
+        print(f">> Epoch {epoch + 1}/{epochs}")
 
         # Training phase
         model.train()
@@ -113,7 +109,7 @@ def main(argv: argparse.Namespace):
 
         train_loader_len = len(train_loader.dataset)
         item_count = round(train_loader_len / batch_size)
-        mprint(f"train item_count: {item_count}")
+        print(f"train item_count: {item_count}")
 
         for idx, (images, labels) in enumerate(train_loader):
             progress_bar(idx / item_count, suffix=f" {idx}/{item_count}")
@@ -136,7 +132,7 @@ def main(argv: argparse.Namespace):
 
         history['train_loss'].append(train_loss)
         history['train_acc'].append(train_acc)
-        mprint(f"Training Loss: {train_loss:.4f}, Training Accuracy: {train_acc:.4f}")
+        print(f"Training Loss: {train_loss:.4f}, Training Accuracy: {train_acc:.4f}")
 
         # Validation phase
         model.eval()
@@ -146,7 +142,7 @@ def main(argv: argparse.Namespace):
         with torch.no_grad():
             val_loader_len = len(val_loader.dataset)
             item_count = round(val_loader_len / batch_size)
-            mprint(f"val item_count: {item_count}")
+            print("val item_count: ", item_count)
 
             for idx, (images, labels) in enumerate(val_loader):
                 progress_bar(idx / item_count, suffix=f" {idx}/{item_count}")
@@ -168,7 +164,7 @@ def main(argv: argparse.Namespace):
 
         history['val_loss'].append(val_loss)
         history['val_acc'].append(val_acc)
-        mprint(f"Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_acc:.4f}")
+        print(f"Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_acc:.4f}")
 
         # Learning rate scheduler
         scheduler.step(val_loss)
@@ -181,13 +177,13 @@ def main(argv: argparse.Namespace):
         else:
             epochs_no_improve += 1
             if epochs_no_improve >= early_stopping_patience:
-                mprint("Early stopping triggered")
+                print("Early stopping triggered")
                 break
 
     elapsed_time = time.time() - train_start_time
     hours, remainder = divmod(elapsed_time, 3600)
     minutes, seconds = divmod(remainder, 60)
-    mprint(f"Training complete in {int(hours):02}:{int(minutes):02}:{int(seconds):02}")
+    print(f"Training complete in {int(hours):02}:{int(minutes):02}:{int(seconds):02}")
 
     if argv.show:
         visualize(history, argv.out_file)
@@ -197,16 +193,16 @@ def main(argv: argparse.Namespace):
     # Load the best model for inference
     model.load_state_dict(torch.load(f"{argv.out_file}.tmp", weights_only=False))
     torch.save(model.state_dict(), argv.out_file)
-    mprint(f"Model saved to \"{argv.out_file}\"")
+    print(f"Model saved to \"{argv.out_file}\"")
 
     elapsed_time = time.time() - start_time
     hours, remainder = divmod(elapsed_time, 3600)
     minutes, seconds = divmod(remainder, 60)
-    mprint(f"Full run time: {int(hours):02}:{int(minutes):02}:{int(seconds):02}")
+    print(f"Full run time: {int(hours):02}:{int(minutes):02}:{int(seconds):02}")
 
 
 def visualize(history, model_save_file: str):
-    mprint("Visualize")
+    print("Visualize")
 
     epochs = range(1, len(history['train_loss']) + 1)
 
@@ -256,7 +252,7 @@ def predict(model, class_names, img_path: str):
 
         confidence, predicted = torch.max(probabilities, 1)
         confidence_percentage = confidence.item() * 100
-        mprint(f'Predicted class: {class_names[predicted.item()]} with confidence: {confidence_percentage:.2f}%')
+        print(f'Predicted class: {class_names[predicted.item()]} with confidence: {confidence_percentage:.2f}%')
     time.sleep(3)
 
 
