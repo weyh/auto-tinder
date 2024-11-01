@@ -1,10 +1,14 @@
 import argparse
 import fnmatch
+import json
 import os
 import pathlib
 import platform
+import shutil
 import sys
 import time
+from typing import Tuple, List
+import re
 
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -12,6 +16,8 @@ from PIL import Image
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from matplotlib import gridspec
+from matplotlib.widgets import Button
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -38,7 +44,7 @@ def main(argv: argparse.Namespace):
 
     # Hyperparameters
     batch_size = 32
-    epochs = 50
+    epochs = 64
     learning_rate = 0.0001
     print(f"batch size: {batch_size}, epochs: {epochs}, lr: {learning_rate}")
 
@@ -185,10 +191,11 @@ def main(argv: argparse.Namespace):
     minutes, seconds = divmod(remainder, 60)
     print(f"Training complete in {int(hours):02}:{int(minutes):02}:{int(seconds):02}")
 
-    if argv.show:
-        visualize(history, argv.out_file)
-    if argv.ref_file is not None:
-        predict(model, class_names, argv.ref_file)
+    print("Evaluate model")
+    evaluate(model, class_names, os.path.join(data_dir, 'eva'), argv.out_file, args.visualize, args.show)
+
+    if argv.show or args.visualize:
+        visualize(history, argv.out_file, args.visualize, args.show)
 
     # Load the best model for inference
     model.load_state_dict(torch.load(f"{argv.out_file}.tmp", weights_only=False))
@@ -201,7 +208,7 @@ def main(argv: argparse.Namespace):
     print(f"Full run time: {int(hours):02}:{int(minutes):02}:{int(seconds):02}")
 
 
-def visualize(history, model_save_file: str):
+def visualize(history, model_save_file: str, vis: bool, show: bool):
     print("Visualize")
 
     epochs = range(1, len(history['train_loss']) + 1)
@@ -229,14 +236,142 @@ def visualize(history, model_save_file: str):
 
     plt.tight_layout()
 
-    ext_start_idx = model_save_file.rfind('.')
-    if ext_start_idx != -1:
-        plt.savefig(f"{model_save_file[:ext_start_idx]}.png")
+    if vis:
+        ext_start_idx = model_save_file.rfind('.')
+        if ext_start_idx != -1:
+            plt.savefig(f"{model_save_file[:ext_start_idx]}_visualize.png")
 
-    plt.show(block=True)
+    if show:
+        plt.show(block=True)
 
 
-def predict(model, class_names, img_path: str):
+def evaluate(model, class_names: List[str], eva_dir: str, model_save_file: str, vis: bool, show: bool):
+    print("Evaluate")
+    files: List[str] = []
+
+    for dir_path, _, filenames in os.walk(eva_dir):
+        for filename in filenames:
+            files.append(os.path.join(dir_path, filename))
+
+    files_len = len(files)
+
+    total_correct = 0
+    history = []
+    for file in files:
+        expected = "ok" if re.match(".*(ok)_.+", file) else "x"
+        try:
+            c, p = predict(model, class_names, file)
+        except RuntimeError:
+            files_len -= 1
+            print(f"Skipping bad file: {file}", file=sys.stderr)
+            continue
+
+        history.append({
+            "file": file,
+            "expected": expected,
+            "got": {
+                "class_name": c,
+                "confidence_percentage": p
+            }
+        })
+
+        if expected == c:
+            total_correct += 1
+
+    print(f"Accuracy: {total_correct/files_len}")
+
+    if vis or show:
+        out_dir = model_save_file.replace(".pt", "_vis")
+        shutil.rmtree(out_dir, ignore_errors=True)
+        os.makedirs(out_dir, exist_ok=False)
+
+        images_per_page = 3*3
+        total_images = files_len
+
+        total_pages = (len(history) + images_per_page - 1) // images_per_page  # Calculate total pages
+        current_page = 0
+
+        # Set up the figure and axis for the pagination
+        fig, axes = plt.subplots(3, 3, figsize=(12, 12))  # 3 rows and 3 columns
+        axes = axes.flatten()  # Flatten for easy indexing
+
+        # Create buttons for navigation
+        ax_prev = plt.axes([0.1, 0.01, 0.1, 0.05])
+        ax_next = plt.axes([0.8, 0.01, 0.1, 0.05])
+        btn_prev = Button(ax_prev, 'Previous')
+        btn_next = Button(ax_next, 'Next')
+
+        # Update function for each page
+        def update_page(page):
+            fig.suptitle(f"Page {page + 1} of {total_pages} | Correct: {total_correct}/{total_images}", fontsize=14)
+
+            start_idx = page * images_per_page
+            end_idx = min(start_idx + images_per_page, len(history))
+
+            for i, ax in enumerate(axes):
+                ax.clear()
+                if start_idx + i < end_idx:
+                    entry = history[start_idx + i]
+                    img = Image.open(entry['file'])
+
+                    # Expected and got values
+                    exp = entry["expected"]
+                    got_class = entry["got"]["class_name"]
+                    confidence = entry["got"]["confidence_percentage"]
+
+                    # Display image
+                    ax.imshow(img)
+                    ax.axis('off')
+
+                    # Determine title color based on correctness
+                    title_color = 'red' if exp != got_class else 'black'
+                    ax.set_title(f"Expected: {exp} | Got: {got_class} ({confidence:.2f}%)", fontsize=10,
+                                 color=title_color)
+
+                    # Display filename below image
+                    file_name = os.path.basename(entry['file'])
+                    ax.text(0.5, -0.1, file_name, fontsize=8, ha='center', va='top', transform=ax.transAxes)
+                else:
+                    ax.axis('off')  # Hide extra subplots
+
+            plt.draw()
+            # Save the current page to a PNG file
+            plt.savefig(f"{out_dir}/page_{page + 1}.png", bbox_inches='tight', dpi=300)
+
+        # Button event functions
+        def next_page(event):
+            nonlocal current_page
+            if current_page < total_pages - 1:
+                current_page += 1
+                update_page(current_page)
+
+        def prev_page(event):
+            nonlocal current_page
+            if current_page > 0:
+                current_page -= 1
+                update_page(current_page)
+
+        # Attach event listeners to buttons
+        btn_next.on_clicked(next_page)
+        btn_prev.on_clicked(prev_page)
+
+        # Initial display
+        if vis:
+            with open(f"{out_dir}/history.json", 'w') as json_file:
+                json.dump(history, json_file)
+
+            for p in range(total_pages):
+                progress_bar(p / total_pages, 20, prefix="Saving pages ")
+                update_page(p)
+            progress_bar(1, prefix="Saving pages ")
+
+        if show:
+            current_page = 0
+            update_page(current_page)
+            plt.show(block=True)
+
+
+def predict(model, class_names, img_path: str) -> Tuple[str, float]:
     image = Image.open(img_path)
     image = transforms.Compose([
         transforms.Resize((common.IMG_HEIGHT, common.IMG_WIDTH)),
@@ -252,16 +387,16 @@ def predict(model, class_names, img_path: str):
 
         confidence, predicted = torch.max(probabilities, 1)
         confidence_percentage = confidence.item() * 100
-        print(f'Predicted class: {class_names[predicted.item()]} with confidence: {confidence_percentage:.2f}%')
-    time.sleep(3)
+
+        return class_names[predicted.item()], confidence_percentage
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument('-v', '--visualize', help="saves visualization of training history on graph",
+                        required=False, default=False, action='store_true')
     parser.add_argument('-s', '--show', help="shows training history on graph", required=False,
                         default=False, action='store_true')
-    parser.add_argument('-r', '--ref-file', help="test out trained model on reference img",
-                        required=False, default=None)
     parser.add_argument('-o', '--out-file', help="where the pt file should be saved",
                         required=True)
 
