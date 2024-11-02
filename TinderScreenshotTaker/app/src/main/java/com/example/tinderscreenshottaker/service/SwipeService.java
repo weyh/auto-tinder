@@ -4,11 +4,10 @@ import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
 import android.content.Intent;
 import android.graphics.Path;
-import android.util.DisplayMetrics;
-import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
 
 import com.example.tinderscreenshottaker.MainActivity;
+import com.example.tinderscreenshottaker.util.ELog;
 
 public class SwipeService extends AccessibilityService {
     private static final String TAG = "SwipeService";
@@ -35,7 +34,7 @@ public class SwipeService extends AccessibilityService {
     }
 
     private void performSwipeLeft() {
-        Log.d(TAG, "Performing swipe left");
+        ELog.d(TAG, "Performing swipe left");
         final Path path = new Path();
         // Swipe from near the right edge to the left
         path.moveTo(screenWidth - 100, screenHeight / 2);  // Start near the right edge
@@ -44,7 +43,7 @@ public class SwipeService extends AccessibilityService {
     }
 
     private void performSwipeRight() {
-        Log.d(TAG, "Performing swipe right");
+        ELog.d(TAG, "Performing swipe right");
         final Path path = new Path();
         // Swipe from near the left edge to the right
         path.moveTo(100, screenHeight / 2);                // Start near the left edge
@@ -53,7 +52,7 @@ public class SwipeService extends AccessibilityService {
     }
 
     private void performSwipe(final Path dir) {
-        Log.d(TAG, "Performing swipe");
+        ELog.d(TAG, "Performing swipe");
         final GestureDescription.Builder gestureBuilder = new GestureDescription.Builder();
 
         gestureBuilder.addStroke(new GestureDescription.StrokeDescription(dir, 100, 500));
@@ -61,7 +60,7 @@ public class SwipeService extends AccessibilityService {
             @Override
             public void onCompleted(GestureDescription gestureDescription) {
                 super.onCompleted(gestureDescription);
-                Log.d(TAG, "Swipe completed.");
+                ELog.d(TAG, "Swipe completed.");
 
                 sendBroadcast(new Intent(MainActivity.MyBroadcastReceiver.INVOKE_AUTO_SWIPE_NEXT));
             }
@@ -69,10 +68,10 @@ public class SwipeService extends AccessibilityService {
             @Override
             public void onCancelled(GestureDescription gestureDescription) {
                 super.onCancelled(gestureDescription);
-                Log.d(TAG, "Swipe cancelled.");
+                ELog.d(TAG, "Swipe cancelled.");
             }
         }, null);
-        Log.d(TAG, "Gesture dispatched: " + success);
+        ELog.d(TAG, "Gesture dispatched: " + success);
     }
 
     @Override

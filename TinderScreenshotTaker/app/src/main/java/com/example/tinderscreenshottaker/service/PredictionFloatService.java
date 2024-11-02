@@ -4,7 +4,6 @@ import android.app.Service;
 import android.content.Intent;
 import android.graphics.PixelFormat;
 import android.os.IBinder;
-import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -12,6 +11,7 @@ import android.view.WindowManager;
 import android.widget.TextView;
 
 import com.example.tinderscreenshottaker.R;
+import com.example.tinderscreenshottaker.util.ELog;
 
 public class PredictionFloatService extends Service {
     public static final String ACTION_STOP = "com.example.tinderscreenshottaker.action.STOP";
@@ -62,7 +62,7 @@ public class PredictionFloatService extends Service {
                 final String data = intent.getStringExtra(EXTRA_DATA);
 
                 if (type == '\0') {
-                    Log.e(this.getClass().getSimpleName(), "Unknown type: " + type);
+                    ELog.e(this.getClass().getSimpleName(), "Unknown type: " + type);
                     return START_NOT_STICKY;
                 }
 
@@ -73,7 +73,7 @@ public class PredictionFloatService extends Service {
                 } else if (type == 'o') {
                     result.setTextColor(getResources().getColor(R.color.ok));
                 } else {
-                    Log.e(this.getClass().getSimpleName(), "Unknown type: " + type);
+                    ELog.e(this.getClass().getSimpleName(), "Unknown type: " + type);
                 }
             }
         }
