@@ -285,7 +285,7 @@ def evaluate(model, class_names: List[str], eva_dir: str, model_save_file: str, 
         if expected == c:
             total_correct += 1
 
-    print(f"Accuracy: {total_correct/files_len}")
+    print(f"Accuracy: {total_correct/files_len:.4f}")
 
     if show_plot or save_plot:
         out_dir = model_save_file.replace(".pt", "_evaluation")
@@ -369,7 +369,7 @@ def evaluate(model, class_names: List[str], eva_dir: str, model_save_file: str, 
                 json.dump(history, json_file)
 
             for p in range(total_pages):
-                progress_bar(p / total_pages, 20, prefix="Saving pages ",suffix=f" ({p}/{total_pages})")
+                progress_bar(p / total_pages, 20, prefix="Saving pages ", suffix=f" ({p}/{total_pages})")
                 update_page(p)
             progress_bar(1, prefix="Saving pages ", suffix=f" ({total_pages}/{total_pages})\n")
 
