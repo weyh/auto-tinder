@@ -287,10 +287,8 @@ def evaluate(model, class_names: List[str], eva_dir: str, model_save_file: str, 
 
     print(f"Accuracy: {total_correct/files_len}")
 
-    if show_plot or show_plot:
+    if show_plot or save_plot:
         out_dir = model_save_file.replace(".pt", "_evaluation")
-        shutil.rmtree(out_dir, ignore_errors=True)
-        os.makedirs(out_dir, exist_ok=False)
 
         images_per_page = 3*3
         total_images = files_len
@@ -364,6 +362,9 @@ def evaluate(model, class_names: List[str], eva_dir: str, model_save_file: str, 
 
         # Initial display
         if save_plot:
+            shutil.rmtree(out_dir, ignore_errors=True)
+            os.makedirs(out_dir, exist_ok=False)
+
             with open(f"{out_dir}/history.json", 'w') as json_file:
                 json.dump(history, json_file)
 
