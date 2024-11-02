@@ -178,7 +178,7 @@ def main(argv: argparse.Namespace):
         # Early stopping logic
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), f"{argv.out_file}.tmp")
+            torch.save(model.state_dict(), f"{argv.output_file}.tmp")
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
@@ -192,15 +192,22 @@ def main(argv: argparse.Namespace):
     print(f"Training complete in {int(hours):02}:{int(minutes):02}:{int(seconds):02}")
 
     print("Evaluate model")
-    evaluate(model, class_names, os.path.join(data_dir, 'eva'), argv.out_file, args.visualize, args.show)
+    eva_start_time = time.time()
 
-    if argv.show or args.visualize:
-        visualize(history, argv.out_file, args.visualize, args.show)
+    evaluate(model, class_names, os.path.join(data_dir, 'eva'), argv.output_file, args.save_plot, args.show_plot)
+
+    elapsed_time = time.time() - eva_start_time
+    hours, remainder = divmod(elapsed_time, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    print(f"Evaluation complete in {int(hours):02}:{int(minutes):02}:{int(seconds):02}")
+
+    if argv.save_plot or args.show_plot:
+        visualize(history, argv.output_file, args.save_plot, args.show_plot)
 
     # Load the best model for inference
-    model.load_state_dict(torch.load(f"{argv.out_file}.tmp", weights_only=False))
-    torch.save(model.state_dict(), argv.out_file)
-    print(f"Model saved to \"{argv.out_file}\"")
+    model.load_state_dict(torch.load(f"{argv.output_file}.tmp", weights_only=False))
+    torch.save(model.state_dict(), argv.output_file)
+    print(f"Model saved to \"{argv.output_file}\"")
 
     elapsed_time = time.time() - start_time
     hours, remainder = divmod(elapsed_time, 3600)
@@ -208,7 +215,7 @@ def main(argv: argparse.Namespace):
     print(f"Full run time: {int(hours):02}:{int(minutes):02}:{int(seconds):02}")
 
 
-def visualize(history, model_save_file: str, vis: bool, show: bool):
+def visualize(history, model_save_file: str, save_plot: bool, show_plot: bool):
     print("Visualize")
 
     epochs = range(1, len(history['train_loss']) + 1)
@@ -236,16 +243,16 @@ def visualize(history, model_save_file: str, vis: bool, show: bool):
 
     plt.tight_layout()
 
-    if vis:
+    if save_plot:
         ext_start_idx = model_save_file.rfind('.')
         if ext_start_idx != -1:
             plt.savefig(f"{model_save_file[:ext_start_idx]}_visualize.png")
 
-    if show:
+    if show_plot:
         plt.show(block=True)
 
 
-def evaluate(model, class_names: List[str], eva_dir: str, model_save_file: str, vis: bool, show: bool):
+def evaluate(model, class_names: List[str], eva_dir: str, model_save_file: str, save_plot: bool, show_plot: bool):
     print("Evaluate")
     files: List[str] = []
 
@@ -280,8 +287,8 @@ def evaluate(model, class_names: List[str], eva_dir: str, model_save_file: str, 
 
     print(f"Accuracy: {total_correct/files_len}")
 
-    if vis or show:
-        out_dir = model_save_file.replace(".pt", "_vis")
+    if show_plot or show_plot:
+        out_dir = model_save_file.replace(".pt", "_evaluation")
         shutil.rmtree(out_dir, ignore_errors=True)
         os.makedirs(out_dir, exist_ok=False)
 
@@ -356,16 +363,16 @@ def evaluate(model, class_names: List[str], eva_dir: str, model_save_file: str, 
         btn_prev.on_clicked(prev_page)
 
         # Initial display
-        if vis:
+        if save_plot:
             with open(f"{out_dir}/history.json", 'w') as json_file:
                 json.dump(history, json_file)
 
             for p in range(total_pages):
-                progress_bar(p / total_pages, 20, prefix="Saving pages ")
+                progress_bar(p / total_pages, 20, prefix="Saving pages ",suffix=f" ({p}/{total_pages})")
                 update_page(p)
-            progress_bar(1, prefix="Saving pages ")
+            progress_bar(1, prefix="Saving pages ", suffix=f" ({total_pages}/{total_pages})\n")
 
-        if show:
+        if show_plot:
             current_page = 0
             update_page(current_page)
             plt.show(block=True)
@@ -393,16 +400,16 @@ def predict(model, class_names, img_path: str) -> Tuple[str, float]:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-v', '--visualize', help="saves visualization of training history on graph",
+    parser.add_argument('-S', '--save-plot', help="saves visualization of plots",
                         required=False, default=False, action='store_true')
-    parser.add_argument('-s', '--show', help="shows training history on graph", required=False,
+    parser.add_argument('-s', '--show-plot', help="shows plots in window", required=False,
                         default=False, action='store_true')
-    parser.add_argument('-o', '--out-file', help="where the pt file should be saved",
+    parser.add_argument('-o', '--output-file', help="where the pt file should be saved",
                         required=True)
 
     args = parser.parse_args()
 
-    if not args.out_file.endswith(".pt"):
+    if not args.output_file.endswith(".pt"):
         print("Invalid output file type", file=sys.stderr)
         exit(1)
 
