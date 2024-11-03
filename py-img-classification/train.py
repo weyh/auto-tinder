@@ -36,9 +36,9 @@ def main(argv: argparse.Namespace):
 
     print("python:", platform.python_version())
     print(f"torch {torch.__version__} CUDA: {torch.cuda.is_available()}")
+    print("Data folder: ", args.input_folder)
 
-    data_dir = pathlib.Path(os.path.join(os.getcwd(), "cache/data"))
-    image_count = sum(len(fnmatch.filter(files, '*.jpg')) for _, _, files in os.walk(data_dir))
+    image_count = sum(len(fnmatch.filter(files, '*.jpg')) for _, _, files in os.walk(args.input_folder))
     print("Image count: ", image_count)
     print(f"Image resolution: {common.IMG_WIDTH}x{common.IMG_HEIGHT}")
 
@@ -67,8 +67,8 @@ def main(argv: argparse.Namespace):
     }
 
     # Load datasets
-    train_ds = datasets.ImageFolder(os.path.join(data_dir, 'train'), transform=data_transforms['train'])
-    val_ds = datasets.ImageFolder(os.path.join(data_dir, 'val'), transform=data_transforms['val'])
+    train_ds = datasets.ImageFolder(os.path.join(args.input_folder, 'train'), transform=data_transforms['train'])
+    val_ds = datasets.ImageFolder(os.path.join(args.input_folder, 'val'), transform=data_transforms['val'])
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
@@ -405,6 +405,8 @@ if __name__ == "__main__":
                         required=False, default=False, action='store_true')
     parser.add_argument('-s', '--show-plot', help="shows plots in window", required=False,
                         default=False, action='store_true')
+    parser.add_argument('-i', '--input-folder', help="parent folder of train, val and eva dirs",
+                        required=False, default=pathlib.Path(os.path.join(os.getcwd(), "cache/data")))
     parser.add_argument('-o', '--output-file', help="where the pt file should be saved",
                         required=True)
 
