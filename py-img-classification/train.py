@@ -93,7 +93,7 @@ def main(argv: argparse.Namespace):
     model.to(device)
 
     best_val_loss = float('inf')
-    early_stopping_patience = 5
+    early_stopping_patience = 4
     epochs_no_improve = 0
 
     history = {
@@ -194,7 +194,8 @@ def main(argv: argparse.Namespace):
     print("Evaluate model")
     eva_start_time = time.time()
 
-    evaluate(model, class_names, os.path.join(data_dir, 'eva'), argv.output_file, args.save_plot, args.show_plot)
+    evaluate(model, class_names, os.path.join(args.input_folder, 'eva'), argv.output_file,
+             args.save_plot, args.show_plot)
 
     elapsed_time = time.time() - eva_start_time
     hours, remainder = divmod(elapsed_time, 3600)
