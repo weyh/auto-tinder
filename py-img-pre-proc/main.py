@@ -123,7 +123,7 @@ def process_jpgs(dir_struct, files_jpg, train_ratio, val_ratio, eval_ratio):
 def main(args: argparse.Namespace):
     if args.zip:
         print("ZIP mode")
-        temp_folder = os.path.join(tempfile.gettempdir(), "pipp")
+        temp_folder = os.path.join(args.temp_dir, "ic_ipe")
         os.makedirs(temp_folder, exist_ok=True)
         extract_zips(args.input, temp_folder)
         args.input = temp_folder
@@ -203,7 +203,7 @@ def main(args: argparse.Namespace):
         print("\nStarting jpg files:")
         files_jpg_len = len(files_jpg)
 
-        if files_png_len < 20:
+        if files_jpg_len < 20:
             print(f"Not enough images to multiprocess ({files_jpg_len})")
             process_jpgs(dir_struct, files_jpg, train_ratio, val_ratio, eval_ratio)
         else:
@@ -232,6 +232,8 @@ def main(args: argparse.Namespace):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('-t', '--temp-dir', default=os.path.join(tempfile.gettempdir(), "pipp"),
+                        help='folder where files are temporarily extracted to')
     parser.add_argument('-z', '--zip', action='store_true', default=False,
                         help='if set in dir is treated as a folder that contains zips')
     parser.add_argument('-i', '--input', required=True)
