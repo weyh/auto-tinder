@@ -54,11 +54,11 @@ def decrypt(encrypted_str: str, key: str) -> str:
 
 
 def generate_check_data(port: int) -> str:
-    return f"{CHECK_DATA_BASE}_{port}+{int(time.time() // 60)}"
+    return f"{CHECK_DATA_BASE}_{port}+{int(time.time() / 3600)}"
 
 
 def generate_check_data_prev(port: int) -> str:
-    return f"{CHECK_DATA_BASE}_{port}+{int((time.time() - 60) // 60)}"
+    return f"{CHECK_DATA_BASE}_{port}+{int((time.time() - 3600) / 3600)}"
 
 
 def get_files(in_dir: str, file_filter: List[str]) -> List[str]:

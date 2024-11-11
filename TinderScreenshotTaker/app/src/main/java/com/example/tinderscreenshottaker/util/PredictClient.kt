@@ -15,7 +15,7 @@ class PredictClient(private val ip: String, private val port: Int) {
     }
 
     private fun generateCheckData(): String {
-        return "${CHECK_DATA_BASE}_${port}+${(System.currentTimeMillis() / (1000 * 60)).toLong()}"
+        return "${CHECK_DATA_BASE}_${port}+${(System.currentTimeMillis() / (1000 * 60 * 60)).toLong()}"
     }
 
     private fun deriveKey(key: String): ByteArray {
