@@ -23,22 +23,6 @@ def qprint(text: str):
     sys.stdout.flush()
 
 
-def convert_png_to_jpg(png_path, jpg_path, quality):
-    with Image.open(png_path) as img:
-        # Convert image to RGB (PNG might have transparency channel which JPG does not support)
-        rgb_img = img.convert('RGB')
-        rgb_img.save(jpg_path, 'JPEG', quality=quality)
-
-
-def resize_image(input_path, scale):
-    with Image.open(input_path) as img:
-        # Calculate the new size
-        new_size = (int(img.width * scale), int(img.height * scale))
-        # Resize the image
-        resized_img = img.resize(new_size)
-        return resized_img
-
-
 def get_files(in_dir: str, file_filter: List[str]) -> List[str]:
     files = []
 
@@ -66,6 +50,23 @@ def extract_zips(in_dir: str, output: str):
     print()
 
 
+def crop_center(img: Image, offset=100):
+    width, height = img.size
+
+    square_size = min(width, height)
+
+    left = (width - square_size) // 2
+    top = (height - square_size) // 2 - offset
+    right = left + square_size
+    bottom = top + square_size
+
+    # Ensure the crop box is within bounds
+    top = max(0, top)
+    bottom = min(height, bottom)
+
+    return img.crop((left, top, right, bottom))
+
+
 def process_pngs(dir_struct, files_png, train_ratio, val_ratio, eval_ratio):
     rnd_max = 2 ** 64
     for i, png_path in enumerate(files_png):
@@ -88,7 +89,10 @@ def process_pngs(dir_struct, files_png, train_ratio, val_ratio, eval_ratio):
 
         path = path.replace("png", "jpg")
 
-        convert_png_to_jpg(png_path, path, 80)
+        with Image.open(png_path) as img:
+            cropped = crop_center(img)
+            rgb_img = cropped.convert('RGB')
+            rgb_img.save(path, 'JPEG', quality=90)
         qprint(f"DONE: {png_path} -> {path}")
 
 
@@ -113,8 +117,9 @@ def process_jpgs(dir_struct, files_jpg, train_ratio, val_ratio, eval_ratio):
             continue
 
         try:
-            img = resize_image(jpg_path, 0.6)
-            img.save(path, 'JPEG', quality=85)
+            with Image.open(jpg_path) as img:
+                cropped = crop_center(img)
+                cropped.save(path, 'JPEG', quality=90)
             qprint(f"DONE: {jpg_path} -> {path}")
         except OSError:
             print(f"{jpg_path} is bad, SKIP", file=sys.stderr)

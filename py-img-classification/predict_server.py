@@ -74,6 +74,23 @@ def get_files(in_dir: str, file_filter: List[str]) -> List[str]:
     return files
 
 
+def crop_center(img: Image, offset=100):
+    width, height = img.size
+
+    square_size = min(width, height)
+
+    left = (width - square_size) // 2
+    top = (height - square_size) // 2 - offset
+    right = left + square_size
+    bottom = top + square_size
+
+    # Ensure the crop box is within bounds
+    top = max(0, top)
+    bottom = min(height, bottom)
+
+    return img.crop((left, top, right, bottom))
+
+
 def preprocess_image(image_path: str):
     preprocess = transforms.Compose([
         transforms.Resize((common.IMG_HEIGHT, common.IMG_WIDTH)),
@@ -81,7 +98,7 @@ def preprocess_image(image_path: str):
         transforms.Normalize(mean=common.NORM_VECS[0], std=common.NORM_VECS[1]),
     ])
 
-    img = Image.open(image_path).convert("RGB")
+    img = crop_center(Image.open(image_path).convert("RGB"))
     img_tensor = preprocess(img).unsqueeze(0)
     return img_tensor
 
