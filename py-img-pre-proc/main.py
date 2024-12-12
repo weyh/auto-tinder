@@ -4,12 +4,13 @@ import sys
 import random
 import shutil
 import tempfile
-from typing import List
+from typing import List, Union
 import re
 from PIL import Image
 import zipfile
 import multiprocessing as mp
 
+RND_MAX = 2 ** 64
 
 def progress_bar(percent, bar_length=30, suffix=""):
     bar = '#' * int(bar_length * percent) + '-' * (bar_length - int(bar_length * percent))
@@ -68,14 +69,13 @@ def crop_center(img: Image, offset=100):
 
 
 def process_pngs(dir_struct, files_png, train_ratio, val_ratio, eval_ratio):
-    rnd_max = 2 ** 64
     for i, png_path in enumerate(files_png):
-        rnd = random.randint(0, rnd_max - 1)
+        rnd = random.randint(0, RND_MAX - 1)
         file_name = f"{os.path.basename(png_path)[:-4]}_{rnd}.png"
 
-        if rnd < rnd_max * train_ratio:
+        if rnd < RND_MAX * train_ratio:
             working_dir = dir_struct["train"]
-        elif rnd < rnd_max * (train_ratio + val_ratio):
+        elif rnd < RND_MAX * (train_ratio + val_ratio):
             working_dir = dir_struct["validation"]
         else:
             working_dir = dir_struct["evaluation"]
@@ -126,6 +126,10 @@ def process_jpgs(dir_struct, files_jpg, train_ratio, val_ratio, eval_ratio):
 
 
 def main(args: argparse.Namespace):
+    seed: int = args.seed if args.seed is not None else random.randint(0, RND_MAX - 1)
+    random.seed(seed)
+    print("Seed:", seed)
+
     if args.zip:
         print("ZIP mode")
         temp_folder = os.path.join(args.temp_dir, "ic_ipe")
@@ -167,6 +171,9 @@ def main(args: argparse.Namespace):
             print("Cleaning output dir")
             shutil.rmtree(args.output)
             os.makedirs(args.output, exist_ok=False)
+
+        with open(os.path.join(args.output, "seed.txt"), "a") as f:
+            f.write(f"{seed}")
 
         os.makedirs(train_dir, exist_ok=True)
         os.makedirs(val_dir, exist_ok=True)
@@ -237,6 +244,8 @@ def main(args: argparse.Namespace):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('-s', '--seed', type=Union[int | None], default=None,
+                        help='seed used for sorting images to training, validation, evaluation folder')
     parser.add_argument('-t', '--temp-dir', default=os.path.join(tempfile.gettempdir(), "pipp"),
                         help='folder where files are temporarily extracted to')
     parser.add_argument('-z', '--zip', action='store_true', default=False,
