@@ -265,3 +265,5 @@ pyrightconfig.json
 
 cache/
 *.jpg
+*.csv
+*.tmp
