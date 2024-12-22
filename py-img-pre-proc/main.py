@@ -5,16 +5,16 @@ import random
 import shutil
 import tempfile
 import time
-from typing import List, Tuple, Dict, TextIO, Union
+from typing import List, Tuple, Dict
 import re
 from PIL import Image
 import zipfile
 import multiprocessing as mp
-import face_recognition as fr
-import numpy as np
+
+from common import CSV_SEP
+from image_crop import crop
 
 RND_MAX = 2 ** 64
-CSV_SEP = ';'
 
 
 def progress_bar(percent, bar_length=30, suffix=""):
@@ -56,79 +56,13 @@ def extract_zips(in_dir: str, output: str):
     print()
 
 
-def find_face_avg(img: Image) -> Tuple[float, float] | None:
-    image_array = np.array(img)
-    face_locations = fr.face_locations(image_array)
-    face_locations_len = len(face_locations)
-
-    if face_locations_len == 0:
-        return None
-
-    c_x, c_y = 0, 0
-
-    for top, right, bottom, left in face_locations:
-        x, y = (left + right) / 2, (top + bottom) / 2
-        c_x += x
-        c_y += y
-
-    return c_x / face_locations_len, c_y / face_locations_len
-
-
-def crop_center(img: Image, image_file_name: str, point_cache: Dict[str, Tuple[int, int]], cache_file: TextIO):
-    width, height = img.size
-
-    if image_file_name in point_cache:
-        x, y = point_cache.get(image_file_name)
-    else:
-        center_x, center_y = width // 2, height // 2
-        point = None
-
-        try:
-            point = find_face_avg(img)
-        except Exception as e:
-            print(e, file=sys.stderr)
-
-        x, y = center_x, center_y
-
-        if point is not None:
-            x = (point[0] + center_x) // 2
-            y = (point[1] + center_y) // 2
-
-    # Validate bounding box
-    if not (0 <= x < width and 0 <= y < height):
-        raise ValueError("Point is out of image bounds")
-
-    cache_file.write(f"{image_file_name}{CSV_SEP}{x}:{y}\n")
-
-    # Ensure square size doesn't exceed image dimensions
-    square_size = min(width, height)
-
-    # Calculate the crop area
-    crop_x_min = max(0, x - square_size // 2)
-    crop_y_min = max(0, y - square_size // 2)
-    crop_x_max = crop_x_min + square_size
-    crop_y_max = crop_y_min + square_size
-
-    # Adjust if the crop area exceeds image dimensions
-    if crop_x_max > width:
-        crop_x_min = width - square_size
-        crop_x_max = width
-
-    if crop_y_max > height:
-        crop_y_min = height - square_size
-        crop_y_max = height
-
-    # Perform the crop
-    crop_area = (crop_x_min, crop_y_min, crop_x_max, crop_y_max)
-    return img.crop(crop_area)
-
-
-def process_pngs(dir_struct, files_png, train_ratio, val_ratio, eval_ratio,
-                 point_cache: Dict[str, Tuple[int, int]], cache_file_path):
+def process_pngs(dir_struct: Dict[str, Dict[str, str]], files_png: List[str],
+                 train_ratio: float, val_ratio: float, eval_ratio: float,
+                 point_cache: Dict[str, Tuple[float, float]], cache_file_path: str):
     with open(cache_file_path, 'w') as f:
         for i, png_path in enumerate(files_png):
             rnd = random.randint(0, RND_MAX - 1)
-            file_name = f"{os.path.basename(png_path)[:-4]}_{rnd}.png"
+            file_name = os.path.basename(png_path)
 
             if rnd < RND_MAX * train_ratio:
                 working_dir = dir_struct["train"]
@@ -148,17 +82,18 @@ def process_pngs(dir_struct, files_png, train_ratio, val_ratio, eval_ratio,
 
             with Image.open(png_path) as img:
                 rgb_img = img.convert('RGB')
-                cropped = crop_center(rgb_img, png_path, point_cache, f)
+                cropped = crop(rgb_img, png_path, point_cache, f)
                 cropped.save(path, 'JPEG', quality=90)
             qprint(f"DONE: {png_path} -> {path}")
 
 
-def process_jpgs(dir_struct, files_jpg, train_ratio, val_ratio, eval_ratio,
-                 point_cache: Dict[str, Tuple[int, int]], cache_file_path):
+def process_jpgs(dir_struct: Dict[str, Dict[str, str]], files_jpg: List[str],
+                 train_ratio: float, val_ratio: float, eval_ratio: float,
+                 point_cache: Dict[str, Tuple[float, float]], cache_file_path: str):
     with open(cache_file_path, 'w') as f:
         for i, jpg_path in enumerate(files_jpg):
             rnd = random.randint(0, RND_MAX - 1)
-            file_name = f"{os.path.basename(jpg_path)[:-4]}_{rnd}.jpg"
+            file_name = os.path.basename(jpg_path)
 
             if rnd < RND_MAX * train_ratio:
                 working_dir = dir_struct["train"]
@@ -176,14 +111,14 @@ def process_jpgs(dir_struct, files_jpg, train_ratio, val_ratio, eval_ratio,
 
             try:
                 with Image.open(jpg_path) as img:
-                    cropped = crop_center(img, jpg_path, point_cache, f)
+                    cropped = crop(img, jpg_path, point_cache, f)
                     cropped.save(path, 'JPEG', quality=90)
                 qprint(f"DONE: {jpg_path} -> {path}")
             except OSError:
                 print(f"{jpg_path} is bad, SKIP", file=sys.stderr)
 
 
-def parse_cache_csv(file_path: str) -> Dict[str, Tuple[int, int]]:
+def parse_cache_csv(file_path: str) -> Dict[str, Tuple[float, float]]:
     ret = dict()
 
     with open(file_path, mode='r') as f:
@@ -210,6 +145,8 @@ def parse_cache_csv(file_path: str) -> Dict[str, Tuple[int, int]]:
 
 
 def main(args: argparse.Namespace):
+    start_time = time.time()
+
     seed: int = int(args.seed) if args.seed is not None else random.randint(0, RND_MAX - 1)
     random.seed(seed)
     print("Seed:", seed)
@@ -281,9 +218,10 @@ def main(args: argparse.Namespace):
         print("Starting png files:")
         files_png_len = len(files_png)
 
-        if files_png_len < 32:
+        if files_png_len < cpu_count * 3:
             print(f"Not enough images to multiprocess ({files_png_len})")
-            process_pngs(dir_struct, files_png, train_ratio, val_ratio, eval_ratio,
+            process_pngs(dir_struct, files_png,
+                         train_ratio, val_ratio, eval_ratio,
                          point_cache, os.path.join(os.getcwd(), "cache_png_0.tmp"))
         else:
             part_size = files_png_len // worker_count
@@ -298,20 +236,22 @@ def main(args: argparse.Namespace):
 
                 p = mp.Process(target=process_pngs,
                                name=f"png_proc_worker_{i}",
-                               args=(dir_struct, part, train_ratio, val_ratio, eval_ratio,
+                               args=(dir_struct, part,
+                                     train_ratio, val_ratio, eval_ratio,
                                      point_cache, os.path.join(os.getcwd(), f"cache_png_{i}.tmp")))
                 procs.append(p)
                 p.start()
 
-            for i, p in enumerate(procs):
+            for p in procs:
                 p.join()
 
         print("\nStarting jpg files:")
         files_jpg_len = len(files_jpg)
 
-        if files_jpg_len < 32:
+        if files_jpg_len < cpu_count * 3:
             print(f"Not enough images to multiprocess ({files_jpg_len})")
-            process_jpgs(dir_struct, files_jpg, train_ratio, val_ratio, eval_ratio,
+            process_jpgs(dir_struct, files_jpg,
+                         train_ratio, val_ratio, eval_ratio,
                          point_cache, os.path.join(os.getcwd(), "cache_jpg_0.tmp"))
         else:
             part_size = files_jpg_len // worker_count
@@ -326,7 +266,8 @@ def main(args: argparse.Namespace):
 
                 p = mp.Process(target=process_jpgs,
                                name=f"jpg_proc_worker_{i}",
-                               args=(dir_struct, part, train_ratio, val_ratio, eval_ratio,
+                               args=(dir_struct, part,
+                                     train_ratio, val_ratio, eval_ratio,
                                      point_cache, os.path.join(os.getcwd(), f"cache_jpg_{i}.tmp")))
                 procs.append(p)
                 p.start()
@@ -346,12 +287,15 @@ def main(args: argparse.Namespace):
             print("\nCleanup zip artifacts")
             shutil.rmtree(temp_folder)
 
+    end_time = time.time()
+    print(f"Executed in {end_time - start_time:.4f} seconds")
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--cache', required=False, default=os.path.join(os.getcwd(), "cache.csv"),
                         help='path to face location cache csv file')
-    parser.add_argument('-s', '--seed',  default=None,
+    parser.add_argument('-s', '--seed', default=None,
                         help='seed used for sorting images to training, validation, evaluation folder')
     parser.add_argument('-t', '--temp-dir', default=os.path.join(tempfile.gettempdir(), "pipp"),
                         help='folder where files are temporarily extracted to')
