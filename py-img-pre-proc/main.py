@@ -1,18 +1,19 @@
 import argparse
 import os
-import sys
 import random
+import re
 import shutil
+import sys
 import tempfile
 import time
-from typing import List, Tuple, Dict
-import re
-from PIL import Image
 import zipfile
 import multiprocessing as mp
+from typing import List, Dict, Tuple, Optional
 
-from common import CSV_SEP
+from PIL import Image
+
 from image_crop import crop
+from common import CSV_SEP
 
 RND_MAX = 2 ** 64
 
@@ -56,68 +57,6 @@ def extract_zips(in_dir: str, output: str):
     print()
 
 
-def process_pngs(dir_struct: Dict[str, Dict[str, str]], files_png: List[str],
-                 train_ratio: float, val_ratio: float, eval_ratio: float,
-                 point_cache: Dict[str, Tuple[float, float]], cache_file_path: str):
-    with open(cache_file_path, 'w') as f:
-        for i, png_path in enumerate(files_png):
-            rnd = random.randint(0, RND_MAX - 1)
-            file_name = os.path.basename(png_path)
-
-            if rnd < RND_MAX * train_ratio:
-                working_dir = dir_struct["train"]
-            elif rnd < RND_MAX * (train_ratio + val_ratio):
-                working_dir = dir_struct["validation"]
-            else:
-                working_dir = dir_struct["evaluation"]
-
-            if re.match(".*(ok)_.+.((png)|(PNG))$", png_path):
-                path = os.path.join(working_dir["ok"], file_name)
-            elif re.match(".*(x)_.+.((png)|(PNG))$", png_path):
-                path = os.path.join(working_dir["x"], file_name)
-            else:
-                continue
-
-            path = path.replace("png", "jpg")
-
-            with Image.open(png_path) as img:
-                rgb_img = img.convert('RGB')
-                cropped = crop(rgb_img, png_path, point_cache, f)
-                cropped.save(path, 'JPEG', quality=90)
-            qprint(f"DONE: {png_path} -> {path}")
-
-
-def process_jpgs(dir_struct: Dict[str, Dict[str, str]], files_jpg: List[str],
-                 train_ratio: float, val_ratio: float, eval_ratio: float,
-                 point_cache: Dict[str, Tuple[float, float]], cache_file_path: str):
-    with open(cache_file_path, 'w') as f:
-        for i, jpg_path in enumerate(files_jpg):
-            rnd = random.randint(0, RND_MAX - 1)
-            file_name = os.path.basename(jpg_path)
-
-            if rnd < RND_MAX * train_ratio:
-                working_dir = dir_struct["train"]
-            elif rnd < RND_MAX * (train_ratio + val_ratio):
-                working_dir = dir_struct["validation"]
-            else:
-                working_dir = dir_struct["evaluation"]
-
-            if re.match(".*(ok)(_.+|).((jp(e|)g)|(JP(E|)G))$", jpg_path):
-                path = os.path.join(working_dir["ok"], file_name)
-            elif re.match(".*(x)(_.+|).((jp(e|)g)|(JP(E|)G))$", jpg_path):
-                path = os.path.join(working_dir["x"], file_name)
-            else:
-                continue
-
-            try:
-                with Image.open(jpg_path) as img:
-                    cropped = crop(img, jpg_path, point_cache, f)
-                    cropped.save(path, 'JPEG', quality=90)
-                qprint(f"DONE: {jpg_path} -> {path}")
-            except OSError:
-                print(f"{jpg_path} is bad, SKIP", file=sys.stderr)
-
-
 def parse_cache_csv(file_path: str) -> Dict[str, Tuple[float, float]]:
     ret = dict()
 
@@ -144,6 +83,54 @@ def parse_cache_csv(file_path: str) -> Dict[str, Tuple[float, float]]:
     return ret
 
 
+def worker(job_queue: mp.Queue, dir_struct: Dict[str, Dict[str, str]],
+           train_ratio: float, val_ratio: float, eval_ratio: float,
+           point_cache: Dict[str, Tuple[float, float]], cache_file_path: str):
+    with open(cache_file_path, 'w') as f:
+        while True:
+            file_path = job_queue.get()
+            if file_path is None:  # Signal to terminate
+                break
+
+            rnd = random.randint(0, RND_MAX - 1)
+            file_name = os.path.basename(file_path)
+
+            if rnd < RND_MAX * train_ratio:
+                working_dir = dir_struct["train"]
+            elif rnd < RND_MAX * (train_ratio + val_ratio):
+                working_dir = dir_struct["validation"]
+            else:
+                working_dir = dir_struct["evaluation"]
+
+            is_png = False
+            if re.match(".*(ok)(_.+|).((jp(e|)g)|(JP(E|)G))$", file_path):
+                new_file_path = os.path.join(working_dir["ok"], file_name)
+            elif re.match(".*(x)(_.+|).((jp(e|)g)|(JP(E|)G))$", file_path):
+                new_file_path = os.path.join(working_dir["x"], file_name)
+            elif re.match(".*(ok)_.+.((png)|(PNG))$", file_path):
+                new_file_path = os.path.join(working_dir["ok"], file_name)
+                new_file_path = new_file_path.replace("png", "jpg")
+                is_png = True
+            elif re.match(".*(x)_.+.((png)|(PNG))$", file_path):
+                new_file_path = os.path.join(working_dir["x"], file_name)
+                new_file_path = new_file_path.replace("png", "jpg")
+                is_png = True
+            else:
+                continue
+
+            try:
+                with Image.open(file_path) as img:
+                    if is_png:
+                        rgb_img = img.convert('RGB')
+                    else:
+                        rgb_img = img
+                    cropped = crop(rgb_img, file_path, point_cache, f)
+                    cropped.save(new_file_path, 'JPEG', quality=90)
+                qprint(f"DONE: {file_path} -> {new_file_path}")
+            except OSError:
+                print(f"{file_path} is bad, SKIP", file=sys.stderr)
+
+
 def main(args: argparse.Namespace):
     start_time = time.time()
 
@@ -159,8 +146,7 @@ def main(args: argparse.Namespace):
         args.input = temp_folder
 
     try:
-        files_jpg = get_files(args.input, [".jpg", ".jpeg"])
-        files_png = get_files(args.input, [".png"])
+        files = get_files(args.input, [".jpg", ".jpeg", ".png"])
 
         train_dir = os.path.join(args.output, "train")
         val_dir = os.path.join(args.output, "val")
@@ -211,69 +197,31 @@ def main(args: argparse.Namespace):
         except FileNotFoundError:
             pass
 
+        job_queue: mp.Queue[Optional[str]] = mp.Queue()
         cpu_count = mp.cpu_count()
         worker_count = int(max(1, cpu_count * 0.99))
         print(f"CPU core count: {cpu_count}, Worker count: {worker_count}")
 
-        print("Starting png files:")
-        files_png_len = len(files_png)
+        print("Starting workers")
+        procs = []
+        for i in range(worker_count):
+            p = mp.Process(target=worker,
+                           name=f"prp_worker_{i}",
+                           args=(job_queue,
+                                 dir_struct, train_ratio, val_ratio, eval_ratio,
+                                 point_cache, os.path.join(os.getcwd(), f"csv_cache_{i}.tmp")))
+            procs.append(p)
+            p.start()
 
-        if files_png_len < cpu_count * 3:
-            print(f"Not enough images to multiprocess ({files_png_len})")
-            process_pngs(dir_struct, files_png,
-                         train_ratio, val_ratio, eval_ratio,
-                         point_cache, os.path.join(os.getcwd(), "cache_png_0.tmp"))
-        else:
-            part_size = files_png_len // worker_count
-            remainder = files_png_len % worker_count
+        print("Adding jobs")
+        for file_path in files:
+            job_queue.put(file_path)
 
-            procs = []
+        for _ in range(worker_count):
+            job_queue.put(None)
 
-            for i in range(worker_count):
-                start = i * part_size + min(i, remainder)
-                end = start + part_size + (1 if i < remainder else 0)
-                part = files_png[start:end]
-
-                p = mp.Process(target=process_pngs,
-                               name=f"png_proc_worker_{i}",
-                               args=(dir_struct, part,
-                                     train_ratio, val_ratio, eval_ratio,
-                                     point_cache, os.path.join(os.getcwd(), f"cache_png_{i}.tmp")))
-                procs.append(p)
-                p.start()
-
-            for p in procs:
-                p.join()
-
-        print("\nStarting jpg files:")
-        files_jpg_len = len(files_jpg)
-
-        if files_jpg_len < cpu_count * 3:
-            print(f"Not enough images to multiprocess ({files_jpg_len})")
-            process_jpgs(dir_struct, files_jpg,
-                         train_ratio, val_ratio, eval_ratio,
-                         point_cache, os.path.join(os.getcwd(), "cache_jpg_0.tmp"))
-        else:
-            part_size = files_jpg_len // worker_count
-            remainder = files_jpg_len % worker_count
-
-            procs = []
-
-            for i in range(worker_count):
-                start = i * part_size + min(i, remainder)
-                end = start + part_size + (1 if i < remainder else 0)
-                part = files_jpg[start:end]
-
-                p = mp.Process(target=process_jpgs,
-                               name=f"jpg_proc_worker_{i}",
-                               args=(dir_struct, part,
-                                     train_ratio, val_ratio, eval_ratio,
-                                     point_cache, os.path.join(os.getcwd(), f"cache_jpg_{i}.tmp")))
-                procs.append(p)
-                p.start()
-
-            for p in procs:
-                p.join()
+        for p in procs:
+            p.join()
 
         print("\nMerge csv cache files")
         tmp_csvs = get_files(os.getcwd(), [".tmp"])
