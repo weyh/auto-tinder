@@ -124,7 +124,7 @@ def worker(job_queue: mp.Queue, dir_struct: Dict[str, Dict[str, str]],
                         rgb_img = img.convert('RGB')
                     else:
                         rgb_img = img
-                    cropped = crop(rgb_img, file_path, point_cache, f)
+                    cropped = crop(rgb_img, file_name, point_cache, f)
                     cropped.save(new_file_path, 'JPEG', quality=90)
                 qprint(f"DONE: {file_path} -> {new_file_path}")
             except OSError:
@@ -202,7 +202,7 @@ def main(args: argparse.Namespace):
         worker_count = int(max(1, cpu_count * 0.99))
         print(f"CPU core count: {cpu_count}, Worker count: {worker_count}")
 
-        print("Starting workers")
+        print("Starting workers", end='')
         procs = []
         for i in range(worker_count):
             p = mp.Process(target=worker,
@@ -212,8 +212,9 @@ def main(args: argparse.Namespace):
                                  point_cache, os.path.join(os.getcwd(), f"csv_cache_{i}.tmp")))
             procs.append(p)
             p.start()
+            print(f" {i}", end='')
 
-        print("Adding jobs")
+        print("\nAdding jobs")
         for file_path in files:
             job_queue.put(file_path)
 
