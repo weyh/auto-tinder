@@ -16,27 +16,21 @@ from PIL import Image
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from matplotlib import gridspec
 from matplotlib.widgets import Button
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-import common
-
-
-def progress_bar(percent: float, bar_length: int = 30, suffix: str = '', prefix: str = ''):
-    bar = '#' * int(bar_length * percent) + '-' * (bar_length - int(bar_length * percent))
-    sys.stdout.write(f'\r{prefix}[{bar}] {percent * 100:.2f}%{suffix}')
-    sys.stdout.flush()
+from commonlib.common import progress_bar
+from commonlib import training_common as common
 
 
 def main(argv: argparse.Namespace):
     start_time = time.time()
 
     print("python:", platform.python_version())
-    print(f"torch {torch.__version__} CUDA: {torch.cuda.is_available()}")
-    print("Data folder: ", args.input_folder)
+    print(f"torch: {torch.__version__} CUDA: {torch.cuda.is_available()}")
+    print("Data folder:", args.input_folder)
 
     image_count = sum(len(fnmatch.filter(files, '*.jpg')) for _, _, files in os.walk(args.input_folder))
     print("Image count: ", image_count)

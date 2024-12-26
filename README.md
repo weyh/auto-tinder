@@ -4,23 +4,18 @@ The goal of this project is to automate the tedious task of swiping. It should w
 
 ## Project structure
 
-### Image preprocessor
-
-Folder: `py-img-pre-proc`
-
-The goal of this script is to copy the training and validation data to the right place while compressing it.
-
-In the input folder it expects files that are made by the android app. So the file name should start with "ok" or "x" and match `(ok|x)_[0-9]+.(jpg|png)` pattern. These files can also be in a zip just to group them.
-
-The output folder is the folder where the image classifier pytorch script expects them, so `py-img-classification/cache/data`. There it will create "train", "val" and inside of them "ok" "x" folders.
-
 ### Image classifier
 
 Folder: `py-img-classification`
 
 Requirements: [py-img-classification/requirements.md](py-img-classification/requirements.md)
 
-The `train.py` file is responsible for training the pytorch model. It will output a `.pt` file. It expects the images to be in `cache/data` folder. (I just kind of went with the model params that worked for me.)
+`data_preprocessor.py` is responsible for copying the training and validation data to the right place while compressing it.
+In the input folder it expects files that are made by the android app. So the file name should start with "ok" or "x" and match `(ok|x)_[0-9]+.(jpg|png)` pattern. These files can also be in a zip just to group them.
+The output folder is the folder where the image classifier pytorch script expects them, so `cache/data`.
+There it will create "train", "val" and "eva" and inside "ok" "x" folders.
+
+`train.py` is responsible for training the pytorch model. It will output a `.pt` file. It expects the images to be in `cache/data` folder. (I just kind of went with the model params that worked for me.)
 
 `predict_server.py` is a simple TCP server that does the prediction for the android app, because I was unable to get the andorid tflite interpreter to put out sane results. (I haven't tried it with pytorch yet.) So we need to run this on something, like a pi 🙂.
 
@@ -41,8 +36,8 @@ With the ❤️ and 🚫 overlay buttons you can take screenshots which are save
 4. Train model (if it's not good enough go back to step 1)
 5. Copy the model to a folder that the prediction server can access
 6. Start the server
-8. Set the *ip* and *port*, enable auto swipe if you want auto swiping to happen based on the response from the model
-9. Use the 🦾 button to evaluate the current content of your screen
+7. Set the *ip* and *port*, enable auto swipe if you want auto swiping to happen based on the response from the model
+8. Use the 🦾 button to evaluate the current content of your screen
 
 ## Obtaining data
 

@@ -8,39 +8,21 @@ import tempfile
 import time
 import zipfile
 import multiprocessing as mp
-from typing import List, Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional
 
 from PIL import Image
 
-from image_crop import crop
-from common import CSV_SEP
+from commonlib.image_crop import crop
+from commonlib.common import get_files, progress_bar
 
+CSV_SEP = ';'
 RND_MAX = 2 ** 64
-
-
-def progress_bar(percent, bar_length=30, suffix=""):
-    bar = '#' * int(bar_length * percent) + '-' * (bar_length - int(bar_length * percent))
-    sys.stdout.write(f'\r[{bar}] {percent * 100:.2f}%{suffix}')
-    sys.stdout.flush()
 
 
 def qprint(text: str):
     sys.stdout.write('\r')
     sys.stdout.write(text)
     sys.stdout.flush()
-
-
-def get_files(in_dir: str, file_filter: List[str]) -> List[str]:
-    files = []
-
-    for dir_path, _, filenames in os.walk(in_dir):
-        for filename in filenames:
-            for ff in file_filter:
-                if filename.lower().endswith(ff):
-                    files.append(os.path.join(dir_path, filename))
-                    break
-
-    return files
 
 
 def extract_zips(in_dir: str, output: str):
@@ -124,7 +106,8 @@ def worker(job_queue: mp.Queue, dir_struct: Dict[str, Dict[str, str]],
                         rgb_img = img.convert('RGB')
                     else:
                         rgb_img = img
-                    cropped = crop(rgb_img, file_name, point_cache, f)
+                    cropped, (x, y) = crop(rgb_img, file_name, point_cache)
+                    f.write(f"{file_name}{CSV_SEP}{x}:{y}\n")
                     cropped.save(new_file_path, 'JPEG', quality=90)
                 qprint(f"DONE: {file_path} -> {new_file_path}")
             except OSError:
@@ -242,7 +225,7 @@ def main(args: argparse.Namespace):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cache', required=False, default=os.path.join(os.getcwd(), "cache.csv"),
+    parser.add_argument('--cache', required=False, default=os.path.join(os.getcwd(), "point_cache.csv"),
                         help='path to face location cache csv file')
     parser.add_argument('-s', '--seed', default=None,
                         help='seed used for sorting images to training, validation, evaluation folder')

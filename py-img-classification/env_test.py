@@ -1,6 +1,6 @@
 import platform
 
-from common import *
+from commonlib.training_common import *
 
 
 print(f"python: {platform.python_version()}")

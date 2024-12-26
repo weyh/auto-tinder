@@ -1,11 +1,9 @@
 import sys
-from typing import Tuple, Dict, TextIO, Optional
+from typing import Tuple, Dict, Optional
 
 import numpy as np
 from PIL import Image
 import face_recognition as fr
-
-from common import CSV_SEP
 
 
 def find_face_avg(image_array: np.array) -> Optional[Tuple[float, float]]:
@@ -36,7 +34,8 @@ def remove_bars(image: Image, black_threshold: int = 10, white_threshold: int = 
     return image
 
 
-def crop(img: Image, image_file_name: str, point_cache: Dict[str, Tuple[float, float]], cache_file: TextIO):
+def crop(img: Image, image_file_name: str, point_cache: Dict[str, Tuple[float, float]]) \
+        -> Tuple[Image, Tuple[float, float]]:
     img = remove_bars(img)
 
     width, height = img.size
@@ -59,8 +58,6 @@ def crop(img: Image, image_file_name: str, point_cache: Dict[str, Tuple[float, f
     if not (0 <= x < width and 0 <= y < height):
         raise ValueError(f"Point is out of image bounds, {image_file_name} | {x}:{y}")
 
-    cache_file.write(f"{image_file_name}{CSV_SEP}{x}:{y}\n")
-
     # Ensure square size doesn't exceed image dimensions
     crop_size = min(width, height)
 
@@ -77,4 +74,4 @@ def crop(img: Image, image_file_name: str, point_cache: Dict[str, Tuple[float, f
         top = max(0, bottom - crop_size)
 
     crop_area = (left, top, right, bottom)
-    return img.crop(crop_area)
+    return img.crop(crop_area), (x, y)

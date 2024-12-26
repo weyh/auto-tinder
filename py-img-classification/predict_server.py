@@ -3,8 +3,6 @@ import os
 import random
 import tempfile
 import time
-from typing import List
-import re
 import socket
 from functools import lru_cache
 
@@ -14,11 +12,12 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 
 from PIL import Image
-
 import torch
 from torchvision import transforms
 
-import common
+from commonlib.common import get_files
+from commonlib import training_common as common
+from commonlib.image_crop import crop
 
 
 KEY = "4-KEY_for_this+s3rveR"
@@ -27,6 +26,7 @@ CHECK_DATA_BASE = "<0_w_0>"
 CLASS_NAMES = ['o', 'x']
 
 TEMP_FILE = "TMP_pred_img.jpg"
+
 
 @lru_cache(maxsize=2)
 def derive_key(key_str: str) -> bytes:
@@ -61,36 +61,6 @@ def generate_check_data_prev(port: int) -> str:
     return f"{CHECK_DATA_BASE}_{port}+{int((time.time() - 3600) / 3600)}"
 
 
-def get_files(in_dir: str, file_filter: List[str]) -> List[str]:
-    files = []
-
-    for dir_path, _, filenames in os.walk(in_dir):
-        for filename in filenames:
-            for ff in file_filter:
-                if filename.lower().endswith(ff):
-                    files.append(os.path.join(dir_path, filename))
-                    break
-
-    return files
-
-
-def crop_center(img: Image, offset=100):
-    width, height = img.size
-
-    square_size = min(width, height)
-
-    left = (width - square_size) // 2
-    top = (height - square_size) // 2 - offset
-    right = left + square_size
-    bottom = top + square_size
-
-    # Ensure the crop box is within bounds
-    top = max(0, top)
-    bottom = min(height, bottom)
-
-    return img.crop((left, top, right, bottom))
-
-
 def preprocess_image(image_path: str):
     preprocess = transforms.Compose([
         transforms.Resize((common.IMG_HEIGHT, common.IMG_WIDTH)),
@@ -98,7 +68,7 @@ def preprocess_image(image_path: str):
         transforms.Normalize(mean=common.NORM_VECS[0], std=common.NORM_VECS[1]),
     ])
 
-    img = crop_center(Image.open(image_path).convert("RGB"))
+    img, _ = crop(Image.open(image_path).convert("RGB"), image_path, dict())
     img_tensor = preprocess(img).unsqueeze(0)
     return img_tensor
 
@@ -117,15 +87,26 @@ def predict(model: torch.nn.Module, ref_path: str) -> (str, float):
 
 
 def load_model(model_dir: str) -> torch.nn.Module:
-    models = get_files(model_dir, [".pt", ".pth"])
+    models = get_files(model_dir, [".pt"])
 
-    def extract_number(s):
-        match = re.search(r'\d+', s)
-        return int(match.group()) if match else None
+    selected_model = ""
+    max_dataset_version = -1
+    max_build_num = -1
+    for model in models:
+        tmp = os.path.basename(model).replace(".pt", '').split('_')
 
-    selected_model = max(models, key=extract_number)
+        dataset_version = int(tmp[1])
+        build_num = 0
+        if len(tmp) == 3:
+            build_num = int(tmp[2])
 
-    print("Selected model: " + selected_model)
+        if ((max_dataset_version < dataset_version) or
+                (max_dataset_version == dataset_version and max_build_num < build_num)):
+            selected_model = model
+            max_dataset_version = dataset_version
+            max_build_num = build_num
+
+    print("Selected model:", selected_model)
 
     model = common.MyModel(len(CLASS_NAMES))
     tmp = torch.load(selected_model, map_location=torch.device("cpu"), weights_only=False)
