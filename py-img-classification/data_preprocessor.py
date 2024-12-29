@@ -84,7 +84,6 @@ def worker(job_queue: mp.Queue, dir_struct: Dict[str, Dict[str, str]],
             else:
                 working_dir = dir_struct["evaluation"]
 
-            is_png = False
             if re.match(".*(ok)(_.+|).((jp(e|)g)|(JP(E|)G))$", file_path):
                 new_file_path = os.path.join(working_dir["ok"], file_name)
             elif re.match(".*(x)(_.+|).((jp(e|)g)|(JP(E|)G))$", file_path):
@@ -92,26 +91,22 @@ def worker(job_queue: mp.Queue, dir_struct: Dict[str, Dict[str, str]],
             elif re.match(".*(ok)_.+.((png)|(PNG))$", file_path):
                 new_file_path = os.path.join(working_dir["ok"], file_name)
                 new_file_path = new_file_path.replace("png", "jpg")
-                is_png = True
             elif re.match(".*(x)_.+.((png)|(PNG))$", file_path):
                 new_file_path = os.path.join(working_dir["x"], file_name)
                 new_file_path = new_file_path.replace("png", "jpg")
-                is_png = True
             else:
+                print(f"Skipping bad file name format {file_path}", file=sys.stderr)
                 continue
 
             try:
                 with Image.open(file_path) as img:
-                    if is_png:
-                        rgb_img = img.convert('RGB')
-                    else:
-                        rgb_img = img
+                    rgb_img = img.convert('RGB')
                     cropped, (x, y) = crop(rgb_img, file_name, point_cache)
                     f.write(f"{file_name}{CSV_SEP}{x}:{y}\n")
                     cropped.save(new_file_path, 'JPEG', quality=90)
                 qprint(f"DONE: {file_path} -> {new_file_path}")
-            except OSError:
-                print(f"{file_path} is bad, SKIP", file=sys.stderr)
+            except OSError as e:
+                print(f"Skipping bad file {file_path}: {e}", file=sys.stderr)
 
 
 def main(args: argparse.Namespace):
