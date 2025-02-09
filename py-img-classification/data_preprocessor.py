@@ -187,7 +187,7 @@ def main(args: argparse.Namespace):
                            name=f"prp_worker_{i}",
                            args=(job_queue,
                                  dir_struct, train_ratio, val_ratio, eval_ratio,
-                                 point_cache, os.path.join(os.getcwd(), f"csv_cache_{i}.tmp")))
+                                 point_cache, os.path.join(args.temp_dir, f"csv_cache_{i}.temp")))
             procs.append(p)
             p.start()
             print(f" {i}", end='')
@@ -203,7 +203,7 @@ def main(args: argparse.Namespace):
             p.join()
 
         print("\nMerge csv cache files")
-        tmp_csvs = get_files(os.getcwd(), [".tmp"])
+        tmp_csvs = get_files(args.temp_dir, [".temp"])
         with open(args.cache, "wb") as out:
             for tmp_csv in tmp_csvs:
                 with open(tmp_csv, "rb") as tmp:
