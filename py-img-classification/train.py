@@ -17,9 +17,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from matplotlib.widgets import Button
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+from tabulate import tabulate
 
 from commonlib.common import progress_bar
 from commonlib import training_common as common
@@ -38,9 +40,11 @@ def main(argv: argparse.Namespace):
 
     # Hyperparameters
     batch_size = 32
-    epochs = 64
-    learning_rate = 0.0001
-    print(f"batch size: {batch_size}, epochs: {epochs}, lr: {learning_rate}")
+    epochs = 100
+    learning_rate = 0.001
+    print(tabulate([["batch size", batch_size],
+                    ["epochs", epochs],
+                    ["learning rate", learning_rate]], tablefmt="rounded_grid"))
 
     # Data augmentations
     data_transforms = {

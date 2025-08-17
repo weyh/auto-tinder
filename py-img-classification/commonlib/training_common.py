@@ -2,10 +2,10 @@ from functools import lru_cache
 
 import torch
 from torch import nn
+import torchvision.models as models
 
-
-IMG_HEIGHT = 180
-IMG_WIDTH = 180
+IMG_HEIGHT = 240
+IMG_WIDTH = 240
 
 NORM_VECS = ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 
@@ -20,39 +20,22 @@ def get_device():
 class MyModel(nn.Module):
     def __init__(self, num_classes):
         super(MyModel, self).__init__()
-        self.data_augmentation = nn.Sequential(
-            nn.Conv2d(3, 16, kernel_size=3, padding=1),  # 3 input channels (RGB)
-            nn.ReLU(),
+        self.backbone = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
 
-            nn.MaxPool2d(kernel_size=2),
-            nn.Conv2d(16, 32, kernel_size=3, padding=1),
-            nn.ReLU(),
+        for param in list(self.backbone.parameters())[:-10]:
+            param.requires_grad = False
 
-            nn.MaxPool2d(kernel_size=2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+        # Replace final layer
+        self.backbone.fc = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(self.backbone.fc.in_features, 256),
             nn.ReLU(),
-
-            nn.MaxPool2d(kernel_size=2),
             nn.Dropout(0.3),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.ReLU(),
-            
-            nn.MaxPool2d(kernel_size=2),
-            nn.Dropout(0.3)
+            nn.Linear(256, num_classes)
         )
-        self.flatten = nn.Flatten()
-        self.fc1 = nn.Linear(128 * (IMG_HEIGHT // 16) * (IMG_WIDTH // 16), 256)  # Adjust the size
-        self.fc2 = nn.Linear(256, num_classes)
-        self.dropout = nn.Dropout(0.5)
-        self.relu = nn.ReLU()
 
     def forward(self, x):
-        x = self.data_augmentation(x)
-        x = self.flatten(x)
-        x = self.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = self.fc2(x)
-        return x
+        return self.backbone(x)
 
     def __getstate__(self):
         state = self.__dict__.copy()

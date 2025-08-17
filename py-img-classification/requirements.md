@@ -4,6 +4,7 @@ Server only:
 
 ```
 cryptography~=43.0.1
+tabulate~=0.9.0
 ```
 
 Win nvidia:
